@@ -1,6 +1,6 @@
-mod token {
+pub mod token {
     #[derive(Debug, PartialEq)]
-    enum Token {
+    pub enum Token {
         ILLEGAL,
         EOF,
 
@@ -34,11 +34,11 @@ mod token {
         RETURN,
 
         EQ,
-        NOT_EQ,
+        NOTEQ,
     }
 
     // We only support basic ASCII here.
-    struct Lexer {
+    pub struct Lexer {
         input: Vec<char>,
         position: usize,
         read_position: usize,
@@ -46,7 +46,7 @@ mod token {
     }
 
     impl Lexer {
-        fn new(input: String) -> Lexer {
+        pub fn new(input: String) -> Lexer {
             let mut l = Lexer {
                 input: input.chars().collect(),
                 position: 0,
@@ -76,7 +76,7 @@ mod token {
             }
         }
 
-        fn next_token(&mut self) -> Token {
+        pub fn next_token(&mut self) -> Token {
             self.eat_whitespace();
 
             let token = match self.ch {
@@ -98,7 +98,7 @@ mod token {
                 '!' => match self.peek_char() {
                     '=' => {
                         self.read_char();
-                        Token::NOT_EQ
+                        Token::NOTEQ
                     }
                     _ => Token::BANG,
                 },
@@ -272,7 +272,7 @@ mod token {
             Token::INT(10),
             Token::SEMICOLON,
             Token::INT(10),
-            Token::NOT_EQ,
+            Token::NOTEQ,
             Token::INT(9),
             Token::SEMICOLON,
             Token::EOF,
