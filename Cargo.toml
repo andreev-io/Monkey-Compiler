@@ -1,5 +1,5 @@
 [package]
-name = "monkey-interpreter"
+name = "interpreter"
 version = "0.1.0"
 authors = ["ilya <ilyaandreev2010@gmail.com>"]
 edition = "2018"
