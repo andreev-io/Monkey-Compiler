@@ -57,6 +57,47 @@ pub enum TokenType {
     NotEq,
 }
 
+impl Token {
+    pub fn string(&self) -> String {
+        match self.t_type {
+            TokenType::Illegal => return String::from(""),
+            TokenType::EOF => String::from(""),
+
+            TokenType::Ident => match self.t_value.as_ref().unwrap() {
+                TokenValue::Literal(literal) => literal.to_string(),
+                _ => String::from(""),
+            },
+            TokenType::Int => match self.t_value.as_ref().unwrap() {
+                TokenValue::Numeric(num) => num.to_string(),
+                _ => String::from(""),
+            },
+            TokenType::Assign => String::from("="),
+            TokenType::Plus => String::from("+"),
+            TokenType::Minus => String::from("-"),
+            TokenType::Bang => String::from("!"),
+            TokenType::Asterisk => String::from("*"),
+            TokenType::Slash => String::from("/"),
+            TokenType::LT => String::from("<"),
+            TokenType::GT => String::from(">"),
+            TokenType::Comma => String::from(","),
+            TokenType::Semicolon => String::from(";"),
+            TokenType::LParen => String::from("("),
+            TokenType::RParen => String::from(")"),
+            TokenType::LBrace => String::from("{"),
+            TokenType::RBrace => String::from("}"),
+            TokenType::Function => String::from("fn"),
+            TokenType::Let => String::from("let"),
+            TokenType::True => String::from("true"),
+            TokenType::False => String::from("false"),
+            TokenType::If => String::from("if"),
+            TokenType::Else => String::from("else"),
+            TokenType::Return => String::from("return"),
+            TokenType::Eq => String::from("=="),
+            TokenType::NotEq => String::from("!="),
+        }
+    }
+}
+
 // We only support basic ASCII here.
 pub struct Lexer<'a> {
     input: &'a Vec<char>,
@@ -282,107 +323,329 @@ impl<'a> Lexer<'a> {
 
 #[test]
 fn test_next_token() {
-    //     let input = r#"let five = 5;
-    //         let ten = 10;
+    let input = r#"let five = 5;
+            let ten = 10;
 
-    //         let add = fn(x, y) {
-    //           x + y;
-    //         };
+            let add = fn(x, y) {
+              x + y;
+            };
 
-    //         let result = add(five, ten);
-    //         !-/*5;
-    //         5 < 10 > 5;
+            let result = add(five, ten);
+            !-/*5;
+            5 < 10 > 5;
 
-    //         if (5 < 10) {
-    //             return true;
-    //         } else {
-    //             return false;
-    //         }
+            if (5 < 10) {
+                return true;
+            } else {
+                return false;
+            }
 
-    //         10 == 10;
-    //         10 != 9;"#;
+            10 == 10;
+            10 != 9;"#;
 
-    //     let expected = vec![
-    //         Token::Let,
-    //         Token::Ident(String::from("five")),
-    //         Token::Assign,
-    //         Token::Int(5),
-    //         Token::Semicolon,
-    //         Token::Let,
-    //         Token::Ident(String::from("ten")),
-    //         Token::Assign,
-    //         Token::Int(10),
-    //         Token::Semicolon,
-    //         Token::Let,
-    //         Token::Ident(String::from("add")),
-    //         Token::Assign,
-    //         Token::Function,
-    //         Token::LParen,
-    //         Token::Ident(String::from("x")),
-    //         Token::Comma,
-    //         Token::Ident(String::from("y")),
-    //         Token::RParen,
-    //         Token::LBrace,
-    //         Token::Ident(String::from("x")),
-    //         Token::Plus,
-    //         Token::Ident(String::from("y")),
-    //         Token::Semicolon,
-    //         Token::RBrace,
-    //         Token::Semicolon,
-    //         Token::Let,
-    //         Token::Ident(String::from("result")),
-    //         Token::Assign,
-    //         Token::Ident(String::from("add")),
-    //         Token::LParen,
-    //         Token::Ident(String::from("five")),
-    //         Token::Comma,
-    //         Token::Ident(String::from("ten")),
-    //         Token::RParen,
-    //         Token::Semicolon,
-    //         Token::Bang,
-    //         Token::Minus,
-    //         Token::Slash,
-    //         Token::Asterisk,
-    //         Token::Int(5),
-    //         Token::Semicolon,
-    //         Token::Int(5),
-    //         Token::LT,
-    //         Token::Int(10),
-    //         Token::GT,
-    //         Token::Int(5),
-    //         Token::Semicolon,
-    //         Token::If,
-    //         Token::LParen,
-    //         Token::Int(5),
-    //         Token::LT,
-    //         Token::Int(10),
-    //         Token::RParen,
-    //         Token::LBrace,
-    //         Token::Return,
-    //         Token::True,
-    //         Token::Semicolon,
-    //         Token::RBrace,
-    //         Token::Else,
-    //         Token::LBrace,
-    //         Token::Return,
-    //         Token::False,
-    //         Token::Semicolon,
-    //         Token::RBrace,
-    //         Token::Int(10),
-    //         Token::Eq,
-    //         Token::Int(10),
-    //         Token::Semicolon,
-    //         Token::Int(10),
-    //         Token::NotEq,
-    //         Token::Int(9),
-    //         Token::Semicolon,
-    //         Token::EOF,
-    //     ];
+    let expected = vec![
+        Token {
+            t_type: TokenType::Let,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("five"))),
+        },
+        Token {
+            t_type: TokenType::Assign,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(5)),
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Let,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("ten"))),
+        },
+        Token {
+            t_type: TokenType::Assign,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(10)),
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Let,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("add"))),
+        },
+        Token {
+            t_type: TokenType::Assign,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Function,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::LParen,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("x"))),
+        },
+        Token {
+            t_type: TokenType::Comma,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("y"))),
+        },
+        Token {
+            t_type: TokenType::RParen,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::LBrace,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("x"))),
+        },
+        Token {
+            t_type: TokenType::Plus,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("y"))),
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::RBrace,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Let,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("result"))),
+        },
+        Token {
+            t_type: TokenType::Assign,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("add"))),
+        },
+        Token {
+            t_type: TokenType::LParen,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("five"))),
+        },
+        Token {
+            t_type: TokenType::Comma,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Ident,
+            t_value: Some(TokenValue::Literal(String::from("ten"))),
+        },
+        Token {
+            t_type: TokenType::RParen,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Bang,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Minus,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Slash,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Asterisk,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(5)),
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(5)),
+        },
+        Token {
+            t_type: TokenType::LT,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(10)),
+        },
+        Token {
+            t_type: TokenType::GT,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(5)),
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::If,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::LParen,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(5)),
+        },
+        Token {
+            t_type: TokenType::LT,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(10)),
+        },
+        Token {
+            t_type: TokenType::RParen,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::LBrace,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Return,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::True,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::RBrace,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Else,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::LBrace,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Return,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::False,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::RBrace,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(10)),
+        },
+        Token {
+            t_type: TokenType::Eq,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(10)),
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(10)),
+        },
+        Token {
+            t_type: TokenType::NotEq,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(9)),
+        },
+        Token {
+            t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::EOF,
+            t_value: None,
+        },
+    ];
 
-    //     let input = input.chars().collect();
-    //     let mut lexer = Lexer::new(&input);
-    //     for case in expected.iter() {
-    //         let t = lexer.next_token();
-    //         assert_eq!(t, *case);
-    //     }
+    let input = input.chars().collect();
+    let mut lexer = Lexer::new(&input);
+    for case in expected.iter() {
+        let t = lexer.next_token();
+        assert_eq!(t, *case);
+    }
 }
