@@ -1,4 +1,4 @@
-use crate::repl::lexer::{Lexer, Token};
+use crate::repl::lexer::{Lexer, TokenType};
 use std::io::{Read, Write};
 
 mod lexer;
@@ -17,7 +17,7 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let chars = buffer.chars().collect();
         let mut lex = Lexer::new(&chars);
         let mut token = lex.next_token();
-        while token != Token::EOF {
+        while token.t_type != TokenType::EOF {
             writeln!(stdout, "{:?}", token)?;
             token = lex.next_token();
         }
