@@ -1,4 +1,5 @@
-use crate::repl::lexer::{Lexer, TokenType};
+use crate::repl::lexer::Lexer;
+use crate::repl::parser::Parser;
 use std::io::{Read, Write};
 
 mod lexer;
@@ -15,11 +16,11 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         writeln!(stdout)?;
 
         let chars = buffer.chars().collect();
-        let mut lex = Lexer::new(&chars);
-        let mut token = lex.next_token();
-        while token.t_type != TokenType::EOF {
-            writeln!(stdout, "{:?}", token)?;
-            token = lex.next_token();
-        }
+        let lex = Lexer::new(&chars);
+        let mut parser = Parser::new(lex);
+        let program = parser.parse_program();
+
+        writeln!(stdout, "{}", program.string())?;
+        writeln!(stdout)?;
     }
 }
