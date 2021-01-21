@@ -1,4 +1,7 @@
-use crate::repl::lexer::{Lexer, Token, TokenType};
+use crate::repl::{
+    lexer::{Lexer, Token, TokenType, TokenValue},
+    object::{Environment, Function, Node, Object},
+};
 use std::{io::Error, io::ErrorKind};
 
 pub struct Parser<'a> {
@@ -46,7 +49,7 @@ impl<'a> Parser<'a> {
                     right: right_expression,
                 }))
             }
-            TokenType::False | TokenType::True => Some(Box::new(Boolean {
+            TokenType::False | TokenType::True => Some(Box::new(BooleanExpression {
                 token: self.cur_token.clone(),
             })),
             TokenType::LParen => {
@@ -84,7 +87,7 @@ impl<'a> Parser<'a> {
                         return None;
                     }
 
-                    self.parse_block_statement()
+                    Some(self.parse_block_statement())
                 } else {
                     None
                 };
@@ -92,7 +95,7 @@ impl<'a> Parser<'a> {
                 Some(Box::new(IfExpression {
                     token,
                     condition,
-                    consequence,
+                    consequence: Some(consequence),
                     alternative,
                 }))
             }
@@ -119,7 +122,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_function_params(&mut self) -> Vec<Identifier> {
+    fn parse_function_params(&mut self) -> Vec<Box<Identifier>> {
         let mut v = Vec::new();
 
         if self.peek_token.t_type == TokenType::RParen {
@@ -137,7 +140,7 @@ impl<'a> Parser<'a> {
             token: self.cur_token.clone(),
         };
 
-        v.push(identifier);
+        v.push(Box::new(identifier));
 
         while self.peek_token.t_type == TokenType::Comma {
             self.next_token();
@@ -152,7 +155,7 @@ impl<'a> Parser<'a> {
                 token: self.cur_token.clone(),
             };
 
-            v.push(identifier);
+            v.push(Box::new(identifier));
         }
 
         if self.expect_peek(TokenType::RParen).is_err() {
@@ -162,7 +165,7 @@ impl<'a> Parser<'a> {
         v
     }
 
-    fn parse_block_statement(&mut self) -> Option<Box<BlockStatement>> {
+    fn parse_block_statement(&mut self) -> Box<BlockStatement> {
         let token = self.cur_token.clone();
         self.next_token();
         let mut statements = Vec::new();
@@ -175,7 +178,7 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        Some(Box::new(BlockStatement { token, statements }))
+        Box::new(BlockStatement { token, statements })
     }
 
     fn get_precedence(token_type: TokenType) -> Precedence {
@@ -197,7 +200,7 @@ impl<'a> Parser<'a> {
                 Some(Box::new(CallExpression {
                     token,
                     arguments,
-                    function: Some(left),
+                    function: left,
                 }))
             }
             _ => {
@@ -393,13 +396,20 @@ enum Precedence {
     Call,
 }
 
-trait Statement {
+pub trait Statement {
     fn get_token(&self) -> Token;
     fn get_expression(&self) -> &Option<Box<dyn Expression>>;
     fn string(&self) -> String;
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>>;
 }
 
-struct BlockStatement {
+impl Node for dyn Statement {
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        self.eval(env)
+    }
+}
+
+pub struct BlockStatement {
     // the { token
     token: Token,
     statements: Vec<Box<dyn Statement>>,
@@ -428,6 +438,22 @@ impl Statement for BlockStatement {
         s.push_str(" }");
 
         s
+    }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        let mut result = Box::new(Object::Null);
+        for statement in &self.statements {
+            result = statement.eval(env);
+
+            match *result {
+                Object::ReturnValue(_) => {
+                    return result;
+                }
+                _ => {}
+            }
+        }
+
+        result
     }
 }
 
@@ -466,6 +492,23 @@ impl Statement for LetStatement {
 
         s
     }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        let val = if let Some(val) = &self.value {
+            val.eval(env)
+        } else {
+            Box::new(Object::Null)
+        };
+
+        match &self.name.token.t_value {
+            Some(TokenValue::Literal(name)) => {
+                env.set(name.to_string(), val);
+            }
+            _ => {}
+        };
+
+        Box::new(Object::Null)
+    }
 }
 
 struct ReturnStatement {
@@ -498,6 +541,14 @@ impl Statement for ReturnStatement {
 
         s
     }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        if let Some(v) = &self.value {
+            Box::new(Object::ReturnValue(v.eval(env)))
+        } else {
+            Box::new(Object::ReturnValue(Box::new(Object::Null)))
+        }
+    }
 }
 
 // One-liners that don't do much, say x+5;
@@ -526,19 +577,33 @@ impl Statement for ExpressionStatement {
 
         s
     }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        match &self.value {
+            Some(exp) => exp.eval(env),
+            _ => Box::new(Object::Null),
+        }
+    }
 }
 
-trait Expression {
+pub trait Expression {
     fn get_token(&self) -> Token;
     fn get_left_subexpression(&self) -> &Option<Box<dyn Expression>>;
     fn get_right_subexpression(&self) -> &Option<Box<dyn Expression>>;
     fn string(&self) -> String;
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>>;
+}
+
+impl Node for dyn Expression {
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        self.eval(env)
+    }
 }
 
 struct CallExpression {
     // the ( token
     token: Token,
-    function: Option<Box<dyn Expression>>,
+    function: Box<dyn Expression>,
     arguments: Vec<Box<dyn Expression>>,
 }
 
@@ -563,15 +628,17 @@ impl Expression for CallExpression {
             v.push(arg.string());
         }
 
-        if let Some(f) = &self.function {
-            s.push_str(&f.string());
-        }
+        s.push_str(&self.function.string());
 
         s.push_str("(");
         s.push_str(&v.join(", "));
         s.push_str(");");
 
         s
+    }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        self.function.eval(env)
     }
 }
 
@@ -610,8 +677,57 @@ impl Expression for InfixExpression {
         if let Some(exp) = &self.right {
             s.push_str(&exp.string());
         }
+
         s.push_str(")");
+
         s
+    }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        let (left, right) = match (&self.left, &self.right) {
+            (Some(l), Some(r)) => {
+                let x = l.eval(env);
+                let y = r.eval(env);
+                (x, y)
+            }
+            (Some(l), _) => (l.eval(env), Box::new(Object::Null)),
+            (_, Some(r)) => (Box::new(Object::Null), r.eval(env)),
+            (_, _) => (Box::new(Object::Null), Box::new(Object::Null)),
+        };
+
+        match (*left, &self.token.t_type, *right) {
+            (Object::Integer(l), TokenType::Plus, Object::Integer(r)) => {
+                Box::new(Object::Integer(l + r))
+            }
+            (Object::Integer(l), TokenType::Minus, Object::Integer(r)) => {
+                Box::new(Object::Integer(l - r))
+            }
+            (Object::Integer(l), TokenType::Asterisk, Object::Integer(r)) => {
+                Box::new(Object::Integer(l * r))
+            }
+            (Object::Integer(l), TokenType::Slash, Object::Integer(r)) => {
+                Box::new(Object::Integer(l / r))
+            }
+            (Object::Integer(l), TokenType::LT, Object::Integer(r)) => {
+                Box::new(Object::Boolean(l < r))
+            }
+            (Object::Integer(l), TokenType::GT, Object::Integer(r)) => {
+                Box::new(Object::Boolean(l > r))
+            }
+            (Object::Integer(l), TokenType::Eq, Object::Integer(r)) => {
+                Box::new(Object::Boolean(l == r))
+            }
+            (Object::Integer(l), TokenType::NotEq, Object::Integer(r)) => {
+                Box::new(Object::Boolean(l != r))
+            }
+            (Object::Boolean(l), TokenType::Eq, Object::Boolean(r)) => {
+                Box::new(Object::Boolean(l == r))
+            }
+            (Object::Boolean(l), TokenType::NotEq, Object::Boolean(r)) => {
+                Box::new(Object::Boolean(l != r))
+            }
+            (_, _, _) => Box::new(Object::Null),
+        }
     }
 }
 
@@ -648,14 +764,27 @@ impl Expression for PrefixExpression {
 
         s
     }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        match &self.right {
+            Some(exp) => match (*exp.eval(env), &self.token.t_type) {
+                (Object::Boolean(b), TokenType::Bang) => Box::new(Object::Boolean(!b)),
+                (Object::Null, TokenType::Bang) => Box::new(Object::Boolean(true)),
+                (_, TokenType::Bang) => Box::new(Object::Boolean(false)),
+                (Object::Integer(i), TokenType::Minus) => Box::new(Object::Integer(-1 * i)),
+                (_, _) => Box::new(Object::Null),
+            },
+            _ => Box::new(Object::Null),
+        }
+    }
 }
 
 // boolean expression
-struct Boolean {
+struct BooleanExpression {
     token: Token,
 }
 
-impl Expression for Boolean {
+impl Expression for BooleanExpression {
     fn get_token(&self) -> Token {
         self.token.clone()
     }
@@ -671,10 +800,19 @@ impl Expression for Boolean {
     fn string(&self) -> String {
         self.token.string()
     }
+
+    fn eval<'s, 'a>(&'s self, _env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        match self.token.t_type {
+            TokenType::False => Box::new(Object::Boolean(false)),
+            TokenType::True => Box::new(Object::Boolean(true)),
+            _ => Box::new(Object::Null),
+        }
+    }
 }
 
 // simplest expression
-struct Identifier {
+#[derive(Clone)]
+pub struct Identifier {
     token: Token,
 }
 
@@ -693,6 +831,14 @@ impl Expression for Identifier {
 
     fn string(&self) -> String {
         self.token.string()
+    }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        let ret = Box::new(Object::Null);
+        match &self.token.t_value {
+            Some(TokenValue::Literal(name)) => env.get(name.to_string()),
+            _ => ret,
+        }
     }
 }
 
@@ -739,13 +885,40 @@ impl Expression for IfExpression {
 
         s
     }
+
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        let evaled_cond = if let Some(cond) = &self.condition {
+            cond.eval(env)
+        } else {
+            Box::new(Object::Null)
+        };
+
+        let branch = match *evaled_cond {
+            Object::Null | Object::Boolean(false) => false,
+            _ => true,
+        };
+
+        if branch {
+            if let Some(consequence) = &self.consequence {
+                consequence.eval(env)
+            } else {
+                Box::new(Object::Null)
+            }
+        } else {
+            if let Some(alternative) = &self.alternative {
+                alternative.eval(env)
+            } else {
+                Box::new(Object::Null)
+            }
+        }
+    }
 }
 
 struct FunctionLiteral {
     // the fn token
     token: Token,
-    parameters: Vec<Identifier>,
-    body: Option<Box<BlockStatement>>,
+    parameters: Vec<Box<Identifier>>,
+    body: Box<BlockStatement>,
 }
 
 impl Expression for FunctionLiteral {
@@ -772,13 +945,17 @@ impl Expression for FunctionLiteral {
         s.push_str(&self.token.string());
         s.push_str("(");
         s.push_str(&v.join(", "));
-        s.push_str(")");
-        if let Some(body) = &self.body {
-            s.push_str(" ");
-            s.push_str(&body.string());
-        }
+        s.push_str(") ");
+        s.push_str(&self.body.string());
 
         s
+    }
+
+    fn eval<'s, 'a>(&'s self, _env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        Box::new(Object::Function(Box::new(Function::new::<'s>(
+            self.parameters.clone(),
+            &self.body,
+        ))))
     }
 }
 
@@ -802,10 +979,35 @@ impl Expression for IntegerLiteral {
     fn string(&self) -> String {
         self.token.string()
     }
+
+    fn eval<'s, 'a>(&'s self, _env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        match self.token.t_value {
+            Some(TokenValue::Numeric(value)) => Box::new(Object::Integer(value)),
+            _ => Box::new(Object::Null),
+        }
+    }
 }
 
 pub struct Program {
     statements: Vec<Box<dyn Statement>>,
+}
+
+impl Node for Program {
+    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+        let mut result = Box::new(Object::Null);
+        for statement in &self.statements {
+            result = statement.eval(env);
+
+            match *result {
+                Object::ReturnValue(rv) => {
+                    return result;
+                }
+                _ => {}
+            }
+        }
+
+        result
+    }
 }
 
 impl Program {

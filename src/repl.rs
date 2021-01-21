@@ -1,8 +1,13 @@
-use crate::repl::lexer::Lexer;
-use crate::repl::parser::Parser;
+use crate::repl::{
+    lexer::Lexer,
+    object::{Environment, Node},
+    parser::Parser,
+};
 use std::io::{Read, Write};
 
+mod eval;
 mod lexer;
+mod object;
 mod parser;
 
 pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std::io::Error> {
@@ -18,9 +23,9 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let chars = buffer.chars().collect();
         let lex = Lexer::new(&chars);
         let mut parser = Parser::new(lex);
+        let mut env = Box::new(Environment::new());
         let program = parser.parse_program();
 
-        writeln!(stdout, "{}", program.string())?;
-        writeln!(stdout)?;
+        writeln!(stdout, "{}", program.eval(&mut env).inspect())?;
     }
 }
