@@ -645,9 +645,7 @@ impl Node for CallExpression {
         };
 
         match *func_object {
-            Object::Function(func) => {
-                func.eval_func(self.arguments, env)
-            }
+            Object::Function(func) => func.eval_func(self.arguments, env),
             _ => Box::new(Object::Null),
         }
     }

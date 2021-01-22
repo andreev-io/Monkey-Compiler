@@ -243,9 +243,7 @@ mod test {
                 env: Box::new(Environment::new()),
             },
             T {
-                input: "let a = 5; let b = 15; let c = a + b; c;"
-                    .chars()
-                    .collect(),
+                input: "let a = 5; let b = 15; let c = a + b; c;".chars().collect(),
                 answer: Object::Integer(20),
                 env: Box::new(Environment::new()),
             },

@@ -58,6 +58,18 @@ pub struct Function {
     body: Box<BlockStatement>,
 }
 
+// Since our implementation is a naive one written in Rust, it inherits some of
+// Rust's peculiarities. As such, every identifier "owns" the underlying value.
+// That means that once an identifier is used, its underlying value is now owned
+// by whatever consumed it. Further, since functions are themselves objects in
+// our system, it means that any function can only be run once.
+//
+// On the plus side, garbage collection is unnecessary. On the other hand, we
+// built a language whose memory model conforms to that of Rust, but doesn't
+// have all the features of Rust.
+//
+// In other words, where Rust has ownership, borrowing, and lifetimes, our
+// language only has ownership.
 impl Function {
     pub fn new(parameters: Vec<Box<Identifier>>, body: Box<BlockStatement>) -> Function {
         Function { parameters, body }
@@ -70,7 +82,7 @@ impl Function {
     ) -> Box<Object> {
         let mut new_env = Box::new(Environment::new());
 
-        let iter = args.into_iter().zip(&self.parameters);
+        let iter = args.into_iter().zip(self.parameters);
         for val in iter {
             let arg = val.0.eval(env);
             let param = val.1.string();
