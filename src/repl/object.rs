@@ -2,18 +2,18 @@ use crate::repl::parser::{BlockStatement, Expression, Identifier, Statement};
 use std::collections::HashMap;
 
 pub trait Node {
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>>;
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object>;
 }
 
-pub enum Object<'a> {
+pub enum Object {
     Integer(i32),
     Boolean(bool),
-    Function(Box<Function<'a>>),
-    ReturnValue(Box<Object<'a>>),
+    Function(Box<Function>),
+    ReturnValue(Box<Object>),
     Null,
 }
 
-impl<'a> Object<'a> {
+impl Object {
     pub fn inspect(&self) -> String {
         match self {
             Object::Integer(i) => i.to_string(),
@@ -40,14 +40,14 @@ impl<'a> Object<'a> {
     }
 }
 
-pub struct Environment<'a>(HashMap<String, Box<Object<'a>>>);
+pub struct Environment(HashMap<String, Box<Object>>);
 
-impl<'a> Environment<'a> {
-    pub fn new() -> Environment<'a> {
+impl Environment {
+    pub fn new() -> Environment {
         Environment(HashMap::new())
     }
 
-    pub fn set(&mut self, name: String, val: Box<Object<'a>>) {
+    pub fn set(&mut self, name: String, val: Box<Object>) {
         self.0.insert(name, val);
     }
 
@@ -56,18 +56,13 @@ impl<'a> Environment<'a> {
     }
 }
 
-pub struct Function<'a> {
+pub struct Function {
     parameters: Vec<Box<Identifier>>,
-    body: &'a Box<BlockStatement>,
-    env: Box<Environment<'a>>,
+    body: Box<BlockStatement>,
 }
 
-impl<'a> Function<'a> {
-    pub fn new<'b: 'a>(parameters: Vec<Box<Identifier>>, body: &'b Box<BlockStatement>) -> Function<'a> {
-        Function::<'a> {
-            parameters,
-            body,
-            env: Box::new(Environment::new()),
-        }
+impl Function {
+    pub fn new(parameters: Vec<Box<Identifier>>, body: Box<BlockStatement>) -> Function {
+        Function { parameters, body }
     }
 }

@@ -396,17 +396,10 @@ enum Precedence {
     Call,
 }
 
-pub trait Statement {
+pub trait Statement: Node {
     fn get_token(&self) -> Token;
     fn get_expression(&self) -> &Option<Box<dyn Expression>>;
     fn string(&self) -> String;
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>>;
-}
-
-impl Node for dyn Statement {
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        self.eval(env)
-    }
 }
 
 pub struct BlockStatement {
@@ -439,10 +432,12 @@ impl Statement for BlockStatement {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+impl Node for BlockStatement {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
         let mut result = Box::new(Object::Null);
-        for statement in &self.statements {
+        for statement in self.statements {
             result = statement.eval(env);
 
             match *result {
@@ -492,9 +487,11 @@ impl Statement for LetStatement {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        let val = if let Some(val) = &self.value {
+impl Node for LetStatement {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        let val = if let Some(val) = self.value {
             val.eval(env)
         } else {
             Box::new(Object::Null)
@@ -541,9 +538,11 @@ impl Statement for ReturnStatement {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        if let Some(v) = &self.value {
+impl Node for ReturnStatement {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        if let Some(v) = self.value {
             Box::new(Object::ReturnValue(v.eval(env)))
         } else {
             Box::new(Object::ReturnValue(Box::new(Object::Null)))
@@ -577,27 +576,22 @@ impl Statement for ExpressionStatement {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        match &self.value {
+impl Node for ExpressionStatement {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        match self.value {
             Some(exp) => exp.eval(env),
             _ => Box::new(Object::Null),
         }
     }
 }
 
-pub trait Expression {
+pub trait Expression: Node {
     fn get_token(&self) -> Token;
     fn get_left_subexpression(&self) -> &Option<Box<dyn Expression>>;
     fn get_right_subexpression(&self) -> &Option<Box<dyn Expression>>;
     fn string(&self) -> String;
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>>;
-}
-
-impl Node for dyn Expression {
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        self.eval(env)
-    }
 }
 
 struct CallExpression {
@@ -636,8 +630,10 @@ impl Expression for CallExpression {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+impl Node for CallExpression {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
         self.function.eval(env)
     }
 }
@@ -682,14 +678,12 @@ impl Expression for InfixExpression {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        let (left, right) = match (&self.left, &self.right) {
-            (Some(l), Some(r)) => {
-                let x = l.eval(env);
-                let y = r.eval(env);
-                (x, y)
-            }
+impl Node for InfixExpression {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        let (left, right) = match (self.left, self.right) {
+            (Some(l), Some(r)) => (l.eval(env), r.eval(env)),
             (Some(l), _) => (l.eval(env), Box::new(Object::Null)),
             (_, Some(r)) => (Box::new(Object::Null), r.eval(env)),
             (_, _) => (Box::new(Object::Null), Box::new(Object::Null)),
@@ -764,9 +758,11 @@ impl Expression for PrefixExpression {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        match &self.right {
+impl Node for PrefixExpression {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        match self.right {
             Some(exp) => match (*exp.eval(env), &self.token.t_type) {
                 (Object::Boolean(b), TokenType::Bang) => Box::new(Object::Boolean(!b)),
                 (Object::Null, TokenType::Bang) => Box::new(Object::Boolean(true)),
@@ -800,8 +796,10 @@ impl Expression for BooleanExpression {
     fn string(&self) -> String {
         self.token.string()
     }
+}
 
-    fn eval<'s, 'a>(&'s self, _env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+impl Node for BooleanExpression {
+    fn eval(self: Box<Self>, _env: &mut Box<Environment>) -> Box<Object> {
         match self.token.t_type {
             TokenType::False => Box::new(Object::Boolean(false)),
             TokenType::True => Box::new(Object::Boolean(true)),
@@ -832,8 +830,10 @@ impl Expression for Identifier {
     fn string(&self) -> String {
         self.token.string()
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+impl Node for Identifier {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
         let ret = Box::new(Object::Null);
         match &self.token.t_value {
             Some(TokenValue::Literal(name)) => env.get(name.to_string()),
@@ -885,9 +885,11 @@ impl Expression for IfExpression {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        let evaled_cond = if let Some(cond) = &self.condition {
+impl Node for IfExpression {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        let evaled_cond = if let Some(cond) = self.condition {
             cond.eval(env)
         } else {
             Box::new(Object::Null)
@@ -899,13 +901,13 @@ impl Expression for IfExpression {
         };
 
         if branch {
-            if let Some(consequence) = &self.consequence {
+            if let Some(consequence) = self.consequence {
                 consequence.eval(env)
             } else {
                 Box::new(Object::Null)
             }
         } else {
-            if let Some(alternative) = &self.alternative {
+            if let Some(alternative) = self.alternative {
                 alternative.eval(env)
             } else {
                 Box::new(Object::Null)
@@ -950,11 +952,13 @@ impl Expression for FunctionLiteral {
 
         s
     }
+}
 
-    fn eval<'s, 'a>(&'s self, _env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
-        Box::new(Object::Function(Box::new(Function::new::<'s>(
+impl Node for FunctionLiteral {
+    fn eval(self: Box<Self>, _env: &mut Box<Environment>) -> Box<Object> {
+        Box::new(Object::Function(Box::new(Function::new(
             self.parameters.clone(),
-            &self.body,
+            self.body,
         ))))
     }
 }
@@ -979,8 +983,10 @@ impl Expression for IntegerLiteral {
     fn string(&self) -> String {
         self.token.string()
     }
+}
 
-    fn eval<'s, 'a>(&'s self, _env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+impl Node for IntegerLiteral {
+    fn eval(self: Box<Self>, _env: &mut Box<Environment>) -> Box<Object> {
         match self.token.t_value {
             Some(TokenValue::Numeric(value)) => Box::new(Object::Integer(value)),
             _ => Box::new(Object::Null),
@@ -993,13 +999,13 @@ pub struct Program {
 }
 
 impl Node for Program {
-    fn eval<'s, 'a>(&'s self, env: &'a mut Box<Environment<'a>>) -> Box<Object<'a>> {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
         let mut result = Box::new(Object::Null);
-        for statement in &self.statements {
+        for statement in self.statements {
             result = statement.eval(env);
 
             match *result {
-                Object::ReturnValue(rv) => {
+                Object::ReturnValue(_) => {
                     return result;
                 }
                 _ => {}
@@ -1011,6 +1017,7 @@ impl Node for Program {
 }
 
 impl Program {
+    #[allow(dead_code)]
     pub fn string(&self) -> String {
         let mut s: String = String::from("");
         for statement in &self.statements {
