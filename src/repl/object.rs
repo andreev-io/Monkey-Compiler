@@ -1,9 +1,6 @@
+use crate::repl::eval::Node;
 use crate::repl::parser::{BlockStatement, Expression, Identifier, Statement};
 use std::collections::HashMap;
-
-pub trait Node {
-    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object>;
-}
 
 pub enum Object {
     Integer(i32),
@@ -29,7 +26,7 @@ impl Object {
 
                 s.push_str("fn(");
                 s.push_str(&v.join(", "));
-                s.push_str(") {\n");
+                s.push_str(") ");
                 s.push_str(&f.body.string());
                 s.push_str("\n");
 
@@ -51,8 +48,8 @@ impl Environment {
         self.0.insert(name, val);
     }
 
-    pub fn get(&mut self, name: String) -> Box<Object> {
-        self.0.remove(&name).unwrap()
+    pub fn get(&mut self, name: String) -> Option<Box<Object>> {
+        self.0.remove(&name)
     }
 }
 
@@ -64,5 +61,22 @@ pub struct Function {
 impl Function {
     pub fn new(parameters: Vec<Box<Identifier>>, body: Box<BlockStatement>) -> Function {
         Function { parameters, body }
+    }
+
+    pub fn eval_func(
+        self,
+        args: Vec<Box<dyn Expression>>,
+        env: &mut Box<Environment>,
+    ) -> Box<Object> {
+        let mut new_env = Box::new(Environment::new());
+
+        let iter = args.into_iter().zip(&self.parameters);
+        for val in iter {
+            let arg = val.0.eval(env);
+            let param = val.1.string();
+            new_env.set(param, arg);
+        }
+
+        self.body.eval(&mut new_env)
     }
 }

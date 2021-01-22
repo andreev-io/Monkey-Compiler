@@ -1,6 +1,12 @@
+use crate::repl::object::{Environment, Object};
+
+pub trait Node {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object>;
+}
+
 #[cfg(test)]
 mod test {
-    use crate::repl::object::Node;
+    use crate::repl::eval::Node;
     use crate::repl::{lexer::Lexer, object::Environment, object::Object, parser::Parser};
     struct T {
         input: Vec<char>,
@@ -237,10 +243,57 @@ mod test {
                 env: Box::new(Environment::new()),
             },
             T {
-                input: "let a = 5; let b = a; let c = a + b + 5; c;"
+                input: "let a = 5; let b = 15; let c = a + b; c;"
                     .chars()
                     .collect(),
-                answer: Object::Integer(15),
+                answer: Object::Integer(20),
+                env: Box::new(Environment::new()),
+            },
+        ];
+
+        for test in v.iter_mut() {
+            let l = Lexer::new(&test.input);
+            let mut p = Parser::new(l);
+            let program = Box::new(p.parse_program());
+            let output = program.eval(&mut test.env);
+            assert_eq!(output.inspect(), test.answer.inspect());
+        }
+    }
+
+    #[test]
+    fn test_call_expressions() {
+        let mut v = vec![
+            T {
+                input: "let identity = fn(x) { x; }; identity(5);"
+                    .chars()
+                    .collect(),
+                answer: Object::Integer(5),
+                env: Box::new(Environment::new()),
+            },
+            T {
+                input: "let identity = fn(x) { return x; }; identity(5);"
+                    .chars()
+                    .collect(),
+                answer: Object::Integer(5),
+                env: Box::new(Environment::new()),
+            },
+            T {
+                input: "let double = fn(x) { x * 2; }; double(5);"
+                    .chars()
+                    .collect(),
+                answer: Object::Integer(10),
+                env: Box::new(Environment::new()),
+            },
+            T {
+                input: "let add = fn(x, y) { x + y; }; add(5, 5);"
+                    .chars()
+                    .collect(),
+                answer: Object::Integer(10),
+                env: Box::new(Environment::new()),
+            },
+            T {
+                input: "fn(x) { x; }(5)".chars().collect(),
+                answer: Object::Integer(5),
                 env: Box::new(Environment::new()),
             },
         ];

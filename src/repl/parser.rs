@@ -1,6 +1,7 @@
 use crate::repl::{
+    eval::Node,
     lexer::{Lexer, Token, TokenType, TokenValue},
-    object::{Environment, Function, Node, Object},
+    object::{Environment, Function, Object},
 };
 use std::{io::Error, io::ErrorKind};
 
@@ -634,7 +635,21 @@ impl Expression for CallExpression {
 
 impl Node for CallExpression {
     fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
-        self.function.eval(env)
+        // If the associated expression is an identifier, we get it from the
+        // environment. Otherwise it's a function literal (i.e. unnamed
+        // function), so evaluate it.
+        let func_object = if let Some(obj) = env.get(self.function.string()) {
+            obj
+        } else {
+            self.function.eval(env)
+        };
+
+        match *func_object {
+            Object::Function(func) => {
+                func.eval_func(self.arguments, env)
+            }
+            _ => Box::new(Object::Null),
+        }
     }
 }
 
@@ -836,7 +851,10 @@ impl Node for Identifier {
     fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
         let ret = Box::new(Object::Null);
         match &self.token.t_value {
-            Some(TokenValue::Literal(name)) => env.get(name.to_string()),
+            Some(TokenValue::Literal(name)) => match env.get(name.to_string()) {
+                Some(obj) => obj,
+                _ => ret,
+            },
             _ => ret,
         }
     }
@@ -957,7 +975,7 @@ impl Expression for FunctionLiteral {
 impl Node for FunctionLiteral {
     fn eval(self: Box<Self>, _env: &mut Box<Environment>) -> Box<Object> {
         Box::new(Object::Function(Box::new(Function::new(
-            self.parameters.clone(),
+            self.parameters,
             self.body,
         ))))
     }
