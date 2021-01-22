@@ -5,8 +5,10 @@ use std::collections::HashMap;
 pub enum Object {
     Integer(i32),
     Boolean(bool),
+    String(String),
     Function(Box<Function>),
     ReturnValue(Box<Object>),
+    Array(Vec<Box<Object>>),
     Null,
 }
 
@@ -16,6 +18,20 @@ impl Object {
             Object::Integer(i) => i.to_string(),
             Object::Boolean(b) => b.to_string(),
             Object::ReturnValue(rv) => rv.inspect(),
+            Object::String(s) => s.to_string(),
+            Object::Array(arr) => {
+                let mut s: String = String::from("[");
+                let mut v = Vec::new();
+
+                for el in arr.into_iter() {
+                    v.push(el.inspect());
+                }
+
+                s.push_str(&v.join(","));
+                s.push_str("]");
+
+                s
+            }
             Object::Function(f) => {
                 let mut s: String = String::from("");
 

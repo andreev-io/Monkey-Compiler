@@ -26,6 +26,7 @@ pub enum TokenType {
 
     Ident,
     Int,
+    String,
 
     Assign,
     Plus,
@@ -44,6 +45,8 @@ pub enum TokenType {
     RParen,
     LBrace,
     RBrace,
+    LBracket,
+    RBracket,
 
     Function,
     Let,
@@ -71,6 +74,10 @@ impl Token {
                 TokenValue::Numeric(num) => num.to_string(),
                 _ => String::from(""),
             },
+            TokenType::String => match self.t_value.as_ref().unwrap() {
+                TokenValue::Literal(literal) => literal.to_string(),
+                _ => String::from(""),
+            },
             TokenType::Assign => String::from("="),
             TokenType::Plus => String::from("+"),
             TokenType::Minus => String::from("-"),
@@ -85,6 +92,8 @@ impl Token {
             TokenType::RParen => String::from(")"),
             TokenType::LBrace => String::from("{"),
             TokenType::RBrace => String::from("}"),
+            TokenType::LBracket => String::from("["),
+            TokenType::RBracket => String::from("]"),
             TokenType::Function => String::from("fn"),
             TokenType::Let => String::from("let"),
             TokenType::True => String::from("true"),
@@ -141,6 +150,14 @@ impl<'a> Lexer<'a> {
         self.eat_whitespace();
 
         let token = match self.ch {
+            '[' => Token {
+                t_type: TokenType::LBracket,
+                t_value: None,
+            },
+            ']' => Token {
+                t_type: TokenType::RBracket,
+                t_value: None,
+            },
             '=' => match self.peek_char() {
                 '=' => {
                     self.read_char();
@@ -153,6 +170,10 @@ impl<'a> Lexer<'a> {
                     t_type: TokenType::Assign,
                     t_value: None,
                 },
+            },
+            '"' => Token {
+                t_type: TokenType::String,
+                t_value: Some(TokenValue::Literal(self.read_string())),
             },
             ';' => Token {
                 t_type: TokenType::Semicolon,
@@ -251,6 +272,19 @@ impl<'a> Lexer<'a> {
         self.input[pos..self.position].iter().collect()
     }
 
+    fn read_string(&mut self) -> String {
+        let pos = self.position + 1;
+
+        loop {
+            self.read_char();
+            if self.ch == '"' || self.ch == '\0' {
+                break;
+            }
+        }
+
+        self.input[pos..self.position].iter().collect()
+    }
+
     fn peek_char(&self) -> char {
         if self.read_position >= self.input.len() {
             '\0'
@@ -341,7 +375,11 @@ fn test_next_token() {
             }
 
             10 == 10;
-            10 != 9;"#;
+            10 != 9;
+            "foobar"
+            "foo"
+            [1]
+            "#;
 
     let expected = vec![
         Token {
@@ -634,6 +672,26 @@ fn test_next_token() {
         },
         Token {
             t_type: TokenType::Semicolon,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::String,
+            t_value: Some(TokenValue::Literal(String::from("foobar"))),
+        },
+        Token {
+            t_type: TokenType::String,
+            t_value: Some(TokenValue::Literal(String::from("foo"))),
+        },
+        Token {
+            t_type: TokenType::LBracket,
+            t_value: None,
+        },
+        Token {
+            t_type: TokenType::Int,
+            t_value: Some(TokenValue::Numeric(1)),
+        },
+        Token {
+            t_type: TokenType::RBracket,
             t_value: None,
         },
         Token {

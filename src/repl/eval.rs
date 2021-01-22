@@ -304,4 +304,47 @@ mod test {
             assert_eq!(output.inspect(), test.answer.inspect());
         }
     }
+
+    #[test]
+    fn test_string_expressions() {
+        let mut v = vec![T {
+            input: r#"let x = "good"; let y = "bye"; if (x+y == "goodbye") { 1 } else { 0 }"#
+                .chars()
+                .collect(),
+            answer: Object::Integer(1),
+            env: Box::new(Environment::new()),
+        }];
+
+        for test in v.iter_mut() {
+            let l = Lexer::new(&test.input);
+            let mut p = Parser::new(l);
+            let program = Box::new(p.parse_program());
+            let output = program.eval(&mut test.env);
+            assert_eq!(output.inspect(), test.answer.inspect());
+        }
+    }
+
+    #[test]
+    fn test_array_expressions() {
+        let mut v = vec![
+            T {
+                input: r#"let x = [1, 2, fn(x) { x }(5)]; x[2]"#.chars().collect(),
+                answer: Object::Integer(5),
+                env: Box::new(Environment::new()),
+            },
+            T {
+                input: r#"[1, 2, fn(x) { x }(5)][3-2]"#.chars().collect(),
+                answer: Object::Integer(2),
+                env: Box::new(Environment::new()),
+            },
+        ];
+
+        for test in v.iter_mut() {
+            let l = Lexer::new(&test.input);
+            let mut p = Parser::new(l);
+            let program = Box::new(p.parse_program());
+            let output = program.eval(&mut test.env);
+            assert_eq!(output.inspect(), test.answer.inspect());
+        }
+    }
 }

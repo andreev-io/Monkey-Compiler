@@ -34,6 +34,18 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix(&mut self) -> Option<Box<dyn Expression>> {
         match self.cur_token.t_type {
+            TokenType::String => Some(Box::new(StringLiteral {
+                token: self.cur_token.clone(),
+            })),
+            TokenType::LBracket => {
+                let cur_token = self.cur_token.clone();
+                let elements = self.parse_arguments(TokenType::RBracket);
+                let t = ArrayLiteral {
+                    token: cur_token,
+                    elements,
+                };
+                Some(Box::new(t))
+            }
             TokenType::Ident => Some(Box::new(Identifier {
                 token: self.cur_token.clone(),
             })),
@@ -189,6 +201,7 @@ impl<'a> Parser<'a> {
             TokenType::Plus | TokenType::Minus => Precedence::Sum,
             TokenType::Slash | TokenType::Asterisk => Precedence::Product,
             TokenType::LParen => Precedence::Call,
+            TokenType::LBracket => Precedence::Index,
             _ => Precedence::Lowest,
         }
     }
@@ -196,8 +209,25 @@ impl<'a> Parser<'a> {
     fn parse_infix(&mut self, left: Box<dyn Expression>) -> Option<Box<dyn Expression>> {
         let token = self.cur_token.clone();
         match token.t_type {
+            TokenType::LBracket => {
+                self.next_token();
+                let right = self.parse_expression(Precedence::Lowest);
+                if let Some(right) = right {
+                    if self.expect_peek(TokenType::RBracket).is_err() {
+                        None
+                    } else {
+                        Some(Box::new(IndexExpression {
+                            left: Some(left),
+                            right: Some(right),
+                            token,
+                        }))
+                    }
+                } else {
+                    None
+                }
+            }
             TokenType::LParen => {
-                let arguments = self.parse_call_arguments();
+                let arguments = self.parse_arguments(TokenType::RParen);
                 Some(Box::new(CallExpression {
                     token,
                     arguments,
@@ -219,9 +249,9 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_call_arguments(&mut self) -> Vec<Box<dyn Expression>> {
+    fn parse_arguments(&mut self, typage: TokenType) -> Vec<Box<dyn Expression>> {
         let mut v = Vec::new();
-        if self.peek_token.t_type == TokenType::RParen {
+        if self.peek_token.t_type == typage {
             self.next_token();
             return v;
         }
@@ -240,7 +270,7 @@ impl<'a> Parser<'a> {
             };
         }
 
-        if self.expect_peek(TokenType::RParen).is_err() {
+        if self.expect_peek(typage).is_err() {
             return Vec::new();
         }
 
@@ -395,6 +425,7 @@ enum Precedence {
     Product,
     Prefix,
     Call,
+    Index,
 }
 
 pub trait Statement: Node {
@@ -595,6 +626,52 @@ pub trait Expression: Node {
     fn string(&self) -> String;
 }
 
+struct IndexExpression {
+    // the [ token
+    token: Token,
+    left: Option<Box<dyn Expression>>,
+    right: Option<Box<dyn Expression>>,
+}
+
+impl Expression for IndexExpression {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+
+    fn get_left_subexpression(&self) -> &Option<Box<dyn Expression>> {
+        &self.left
+    }
+
+    fn get_right_subexpression(&self) -> &Option<Box<dyn Expression>> {
+        &self.right
+    }
+
+    fn string(&self) -> String {
+        format!(
+            "({}[{}])",
+            self.left.as_ref().unwrap().string(),
+            self.right.as_ref().unwrap().string()
+        )
+    }
+}
+
+impl Node for IndexExpression {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        let left = self.left.unwrap().eval(env);
+        let right = self.right.unwrap().eval(env);
+        match (*left, *right) {
+            (Object::Array(mut arr), Object::Integer(int)) => {
+                if int >= 0 && int < arr.len() as i32 {
+                    Vec::remove(&mut arr, int as usize)
+                } else {
+                    Box::new(Object::Null)
+                }
+            }
+            (_, _) => Box::new(Object::Null),
+        }
+    }
+}
+
 struct CallExpression {
     // the ( token
     token: Token,
@@ -648,6 +725,53 @@ impl Node for CallExpression {
             Object::Function(func) => func.eval_func(self.arguments, env),
             _ => Box::new(Object::Null),
         }
+    }
+}
+
+struct ArrayLiteral {
+    // the [ token
+    token: Token,
+    elements: Vec<Box<dyn Expression>>,
+}
+
+impl Expression for ArrayLiteral {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+
+    fn get_left_subexpression(&self) -> &Option<Box<dyn Expression>> {
+        &None
+    }
+
+    fn get_right_subexpression(&self) -> &Option<Box<dyn Expression>> {
+        &None
+    }
+
+    fn string(&self) -> String {
+        let mut s: String = String::from("");
+
+        s.push_str("[");
+
+        let mut v = Vec::new();
+        for elem in &self.elements {
+            v.push(elem.string());
+        }
+
+        s.push_str(&v.join(","));
+        s.push_str("]");
+
+        s
+    }
+}
+
+impl Node for ArrayLiteral {
+    fn eval(self: Box<Self>, env: &mut Box<Environment>) -> Box<Object> {
+        let mut array = Vec::new();
+        for el in self.elements {
+            array.push(el.eval(env));
+        }
+
+        Box::new(Object::Array(array))
     }
 }
 
@@ -731,6 +855,15 @@ impl Node for InfixExpression {
                 Box::new(Object::Boolean(l == r))
             }
             (Object::Boolean(l), TokenType::NotEq, Object::Boolean(r)) => {
+                Box::new(Object::Boolean(l != r))
+            }
+            (Object::String(l), TokenType::Plus, Object::String(r)) => {
+                Box::new(Object::String(format!("{}{}", l, r)))
+            }
+            (Object::String(l), TokenType::Eq, Object::String(r)) => {
+                Box::new(Object::Boolean(l == r))
+            }
+            (Object::String(l), TokenType::NotEq, Object::String(r)) => {
                 Box::new(Object::Boolean(l != r))
             }
             (_, _, _) => Box::new(Object::Null),
@@ -979,6 +1112,34 @@ impl Node for FunctionLiteral {
     }
 }
 
+struct StringLiteral {
+    token: Token,
+}
+
+impl Expression for StringLiteral {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+
+    fn get_left_subexpression(&self) -> &Option<Box<dyn Expression>> {
+        &None
+    }
+
+    fn get_right_subexpression(&self) -> &Option<Box<dyn Expression>> {
+        &None
+    }
+
+    fn string(&self) -> String {
+        self.token.string()
+    }
+}
+
+impl Node for StringLiteral {
+    fn eval(self: Box<Self>, _env: &mut Box<Environment>) -> Box<Object> {
+        Box::new(Object::String(String::from(self.token.string())))
+    }
+}
+
 struct IntegerLiteral {
     token: Token,
 }
@@ -1047,7 +1208,9 @@ impl Program {
 #[cfg(test)]
 mod test {
     use crate::repl::{
+        eval::Node,
         lexer::{Lexer, Token, TokenType, TokenValue},
+        object::Environment,
         parser::Parser,
     };
 
@@ -1456,5 +1619,19 @@ mod test {
         } else {
             panic!("no inner expression");
         }
+    }
+
+    #[test]
+    fn test_string_expression() {
+        let input = String::from(r#"let x = "hi"; x"#);
+        let c = input.chars().collect();
+
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = Box::new(p.parse_program());
+
+        assert_eq!(program.statements.len(), 2);
+        let mut env = Box::new(Environment::new());
+        assert_eq!(String::from("hi"), program.eval(&mut env).inspect());
     }
 }
