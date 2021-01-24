@@ -86,4 +86,8 @@ As such, the following are examples of **invalid** code:
 >>> identity(5) <-- invalid
 ```
 
+All this could of course be fixed with the help of more idiomatic Rust. But
+instead of rewriting the interpreter, I'm going to move on to writing a compiler
+in Rust and avoid repeating my own mistakes.
+
 The code contains extensive tests.

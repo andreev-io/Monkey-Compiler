@@ -99,9 +99,9 @@ impl Function {
         let mut new_env = Box::new(Environment::new());
 
         let iter = args.into_iter().zip(self.parameters);
-        for val in iter {
-            let arg = val.0.eval(env);
-            let param = val.1.string();
+        for (arg_proto, param_proto) in iter {
+            let arg = arg_proto.eval(env);
+            let param = param_proto.string();
             new_env.set(param, arg);
         }
 
