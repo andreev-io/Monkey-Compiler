@@ -588,10 +588,7 @@ mod test {
         assert_eq!(program.statements.len(), 3);
         assert_eq!("let x = 5;", program.statements[0].string());
         assert_eq!("let y = 10;", program.statements[1].string());
-        assert_eq!(
-            "let foobar = 838383;",
-            program.statements[2].string()
-        );
+        assert_eq!("let foobar = 838383;", program.statements[2].string());
     }
 
     #[test]
