@@ -53,9 +53,9 @@ Strings:
 
 Functions:
 ```
->>> let add = fn(x, y) { x + y; }; add(5, 5);
+>>> let add = fn(x, y) { x + y; }; add(5, add(5, 5));
 
-10
+15
 ```
 
 ```
@@ -64,30 +64,33 @@ Functions:
 5
 ```
 
-As shown above, the language supports anonymous functions and function literals. However, there's a catch.
-Since our implementation is a naive one written in Rust, it inherits some of Rust's peculiarities. As such, every identifier "owns" the underlying value. That means that once an identifier is used, its underlying value is now owned by whatever consumed it. Further, since functions are themselves objects in our system, any function can only **be run once**. On the plus side, garbage collection is unnecessary. On the other hand, we built a language whose memory model conforms to that of Rust, but doesn't have all the features of Rust. In other words, where Rust has ownership, borrowing, and lifetimes, our language only has ownership.
+As shown above, the language supports anonymous functions and function literals.
+The language doesn't have garbage collection and relies on Rust's ownership
+semantics for memory management. When writing code in Monkey, the semantics are
+as if everything was allocated on the stack (this is almost necessarily not
+true, but is a useful abstraction).
 
-As such, the following are examples of **invalid** code:
+This implementation relies heavily on cloning Rust values. Consider the following example:
 ```
->>> let x = 5;
->>> let adder = fn(y, z) { y + z };
->>> adder(x, x <-- invalid)
-```
+>>> let v = [1, 2, 3]; let superfunc = fn(a) { let b = a; b[0] + b[1] }; superfunc(v)
 
-```
->>> let x = 5;
->>> let y = x;
->>> let z = x; <-- invalid
+3
 ```
 
+When `superfunc` is called, `b` is created by cloning the array `a`, but is deallocated when superfunc returns.
+
+Monkey has closures. Thanks to closures, recursion is possible:
 ```
->>> let identity = fn(x) { return x; };
->>> identity(5)
->>> identity(5) <-- invalid
+let factorial = fn(x) {
+    if (x == 0) {
+        1
+    } else {
+        x * factorial(x-1)
+    }
+}
+
+factorial(5)
 ```
 
-All this could of course be fixed with the help of more idiomatic Rust. But
-instead of rewriting the interpreter, I'm going to move on to writing a compiler
-in Rust and avoid repeating my own mistakes.
-
-The code contains extensive tests.
+Notice that we could've allocated anything within the recursively called
+function, and the values would be successfully deallocated on return.

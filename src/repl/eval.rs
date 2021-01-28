@@ -1,19 +1,21 @@
 use crate::repl::lexer::{Token, TokenType, TokenValue};
 use crate::repl::object::{Environment, Object};
 use crate::repl::parser::{Expression, Program, Statement};
+use core::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Evaluator {
-    env: Environment,
+    env: Rc<RefCell<Environment>>,
 }
 
 impl Evaluator {
     pub fn new() -> Evaluator {
         Evaluator {
-            env: Environment::new(),
+            env: Rc::new(RefCell::new(Environment::new())),
         }
     }
 
-    pub fn new_with_environment(env: Environment) -> Evaluator {
+    pub fn new_with_environment(env: Rc<RefCell<Environment>>) -> Evaluator {
         Evaluator { env }
     }
 
@@ -64,7 +66,7 @@ impl Evaluator {
 
         match &id.t_value {
             Some(TokenValue::Literal(name)) => {
-                self.env.set(name.to_string(), val);
+                self.env.borrow_mut().set(name.to_string(), val);
             }
             _ => {}
         };
@@ -169,10 +171,12 @@ impl Evaluator {
                 _ => Object::Null,
             },
             Expression::Identifier(token) => match &token.t_value {
-                Some(TokenValue::Literal(name)) => match self.env.get(name.to_string()) {
-                    Some(obj) => obj.clone(),
-                    _ => Object::Null,
-                },
+                Some(TokenValue::Literal(name)) => {
+                    match self.env.borrow_mut().get(name.to_string()) {
+                        Some(obj) => obj,
+                        _ => Object::Null,
+                    }
+                }
                 _ => Object::Null,
             },
             Expression::String(token) => match &token.t_value {
@@ -197,15 +201,15 @@ impl Evaluator {
                 }
             }
             Expression::Function(parameters, body) => {
-                Object::Function(parameters.to_vec(), body.clone())
+                Object::Function(parameters.to_vec(), body.clone(), self.env.clone())
             }
         }
     }
 
     fn apply_function(&mut self, f: Object, args: Vec<Object>) -> Object {
         match f {
-            Object::Function(params, mut body) => {
-                let mut new_env = Environment::new();
+            Object::Function(params, mut body, scope) => {
+                let mut new_env = Environment::new_enclosed(scope);
 
                 let iter = args.into_iter().zip(params);
                 for (arg, param) in iter {
@@ -215,7 +219,8 @@ impl Evaluator {
                     }
                 }
 
-                let mut new_evaluator = Evaluator::new_with_environment(new_env);
+                let mut new_evaluator =
+                    Evaluator::new_with_environment(Rc::new(RefCell::new(new_env)));
                 new_evaluator.eval_statement(&mut body)
             }
             _ => Object::Null,
@@ -350,6 +355,26 @@ mod test {
     }
 
     #[test]
+    fn test_recursion() {
+        let input = "let factorial = fn(x) {
+            if (x == 0) {
+                1
+            } else {
+                x * factorial(x-1)
+            }
+        }
+        
+        factorial(5)"
+            .chars()
+            .collect();
+        let l = Lexer::new(&input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
+        let output = Evaluator::new().eval_program(program).inspect();
+        assert_eq!(output, String::from("120"));
+    }
+
+    #[test]
     fn test_eval_infix_expression() {
         let mut v = vec![
             T {
@@ -398,6 +423,18 @@ mod test {
             },
             T {
                 input: "if (1 > 2) { 10 } else { 20 }".chars().collect(),
+                answer: Object::Integer(20),
+                eval: Evaluator::new(),
+            },
+            T {
+                input: "let x = 5; if (x > 2) { 10 } else { 20 }".chars().collect(),
+                answer: Object::Integer(10),
+                eval: Evaluator::new(),
+            },
+            T {
+                input: "let x = 5; if (x == 0) { 1 } else { x * (x-1) }"
+                    .chars()
+                    .collect(),
                 answer: Object::Integer(20),
                 eval: Evaluator::new(),
             },
