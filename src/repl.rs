@@ -1,4 +1,4 @@
-use crate::repl::{eval::Node, lexer::Lexer, object::Environment, parser::Parser};
+use crate::repl::{lexer::Lexer, parser::Parser, eval::Evaluator};
 use std::io::{Read, Write};
 
 mod eval;
@@ -8,7 +8,7 @@ mod parser;
 
 pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std::io::Error> {
     writeln!(stdout, "Welcome to the Monkey REPL!")?;
-    let mut env = Box::new(Environment::new());
+    let mut evaluator = Evaluator::new();
 
     loop {
         let mut buffer = String::new();
@@ -21,8 +21,8 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let chars = buffer.chars().collect();
         let lex = Lexer::new(&chars);
         let mut parser = Parser::new(lex);
-        let program = Box::new(parser.parse_program());
+        let program = parser.parse_program();
 
-        writeln!(stdout, "{}", program.eval(&mut env).inspect())?;
+        writeln!(stdout, "{}", evaluator.eval_program(program).inspect())?;
     }
 }
