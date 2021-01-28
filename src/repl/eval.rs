@@ -37,7 +37,8 @@ impl Evaluator {
         match statement {
             Statement::Block(statements) => self.eval_statements(statements),
             Statement::Let(id, expr) => self.eval_let(id, expr),
-            Statement::Expression(expr) | Statement::Return(expr) => self.eval_expression(expr),
+            Statement::Expression(expr) => self.eval_expression(expr),
+            Statement::Return(expr) => Object::ReturnValue(Box::new(self.eval_expression(expr))),
             Statement::None => Object::Null,
         }
     }

@@ -1,4 +1,4 @@
-use crate::repl::{lexer::Lexer, parser::Parser, eval::Evaluator};
+use crate::repl::{eval::Evaluator, lexer::Lexer, parser::Parser};
 use std::io::{Read, Write};
 
 mod eval;

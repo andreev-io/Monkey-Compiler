@@ -40,7 +40,6 @@ impl<'a> Parser<'a> {
             TokenType::Ident => Box::new(Expression::Identifier(token)),
             TokenType::Int => Box::new(Expression::Integer(token)),
             TokenType::Bang | TokenType::Minus => {
-                let cur_token = self.cur_token.clone();
                 self.next_token();
 
                 let right_expression = self.parse_expression(Precedence::Prefix);
@@ -56,8 +55,6 @@ impl<'a> Parser<'a> {
                 }
             }
             TokenType::If => {
-                let token = self.cur_token.clone();
-
                 if self.expect_peek(TokenType::LParen).is_err() {
                     return Box::new(Expression::None);
                 }
@@ -90,7 +87,6 @@ impl<'a> Parser<'a> {
                 Box::new(Expression::If(condition, consequence, alternative))
             }
             TokenType::Function => {
-                let token = self.cur_token.clone();
                 if self.expect_peek(TokenType::LParen).is_err() {
                     return Box::new(Expression::None);
                 }
@@ -143,7 +139,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_block_statement(&mut self) -> Box<Statement> {
-        let token = self.cur_token.clone();
         self.next_token();
         let mut statements = Vec::new();
 
@@ -284,7 +279,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression_statement(&mut self) -> Option<Statement> {
-        let token = self.cur_token.clone();
         let expression = self.parse_expression(Precedence::Lowest);
         if self.peek_token.t_type == TokenType::Semicolon {
             self.next_token();
@@ -323,7 +317,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_return_statement(&mut self) -> Option<Statement> {
-        let token = self.cur_token.clone();
         self.next_token();
 
         let value = self.parse_expression(Precedence::Lowest);
@@ -382,6 +375,106 @@ pub enum Expression {
     None,
 }
 
+impl Expression {
+    fn string(&self) -> String {
+        match self {
+            Expression::Index(left, right) => {
+                format!("({}[{}])", left.string(), right.string())
+            }
+            Expression::Call(function, arguments) => {
+                let mut s: String = String::from("");
+
+                let mut v = Vec::new();
+                for arg in arguments {
+                    v.push(arg.string());
+                }
+
+                s.push_str(&function.string());
+
+                s.push_str("(");
+                s.push_str(&v.join(", "));
+                s.push_str(");");
+
+                s
+            }
+            Expression::Array(elements) => {
+                let mut s: String = String::from("");
+
+                s.push_str("[");
+
+                let mut v = Vec::new();
+                for elem in elements {
+                    v.push(elem.string());
+                }
+
+                s.push_str(&v.join(","));
+                s.push_str("]");
+
+                s
+            }
+            Expression::Infix(left, token, right) => {
+                let mut s: String = String::from("");
+
+                s.push_str("(");
+                s.push_str(&left.string());
+                s.push_str(&format!(" {} ", token.string()));
+                s.push_str(&right.string());
+
+                s.push_str(")");
+
+                s
+            }
+            Expression::Prefix(token, expr) => {
+                let mut s: String = String::from("");
+
+                s.push_str("(");
+                s.push_str(&token.string());
+                s.push_str(&expr.string());
+
+                s.push_str(")");
+
+                s
+            }
+            Expression::Boolean(token) => token.string(),
+            Expression::Identifier(token) => token.string(),
+            Expression::String(token) => token.string(),
+            Expression::Integer(token) => token.string(),
+            Expression::If(condition, consequence, alternative) => {
+                let mut s: String = String::from("");
+
+                s.push_str("if");
+                s.push_str(" ");
+                s.push_str(&condition.string());
+
+                s.push_str(" ");
+                s.push_str(&consequence.string());
+
+                s.push_str(" ");
+                s.push_str("else ");
+                s.push_str(&alternative.string());
+
+                s
+            }
+            Expression::Function(params, body) => {
+                let mut s: String = String::from("fn");
+
+                let mut v = Vec::new();
+                for param in params {
+                    v.push(param.string());
+                }
+
+                s.push_str("(");
+                s.push_str(&v.join(", "));
+                s.push_str(") ");
+                s.push_str(&body.string());
+
+                s
+            }
+            Expression::None => String::from(""),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Statement {
     Block(Vec<Box<Statement>>),
@@ -391,437 +484,397 @@ pub enum Statement {
     None,
 }
 
+impl Statement {
+    #[allow(dead_code)]
+    fn string(&self) -> String {
+        match self {
+            Statement::Block(statements) => {
+                let mut s: String = String::from("{ ");
+
+                let mut v = Vec::new();
+                for statement in statements {
+                    v.push(statement.string());
+                }
+
+                s.push_str(&v.join("\n"));
+                s.push_str(" }");
+
+                s
+            }
+            Statement::Let(token, expr) => format!("let {} = {};", token.string(), expr.string()),
+            Statement::Expression(expr) => expr.string(),
+            Statement::Return(expr) => format!("return {};", expr.string()),
+            Statement::None => String::from(""),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Program {
     pub statements: Vec<Box<Statement>>,
 }
 
-// #[cfg(test)]
-// mod test {
-//     use crate::repl::{
-//         eval::Node,
-//         lexer::{Lexer, Token, TokenType, TokenValue},
-//         object::Environment,
-//         parser::Parser,
-//     };
+#[cfg(test)]
+mod test {
+    use crate::repl::{
+        eval::Evaluator,
+        lexer::{Lexer, Token, TokenType, TokenValue},
+        parser::{Expression, Parser, Statement},
+    };
 
-//     #[test]
-//     fn test_function_literal() {
-//         let input = r#"fn(x, y) {   x+ y }"#.chars().collect();
-//         let lexer = Lexer::new(&input);
-//         let mut parser = Parser::new(lexer);
-//         let program = parser.parse_program();
+    #[test]
+    fn test_function_literal() {
+        let input = r#"fn(x, y) {   x+ y }"#.chars().collect();
+        let lexer = Lexer::new(&input);
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
 
-//         let statements = program.statements;
-//         assert_eq!(statements.len(), 1);
-//         if let Some(exp) = statements[0].get_expression() {
-//             assert_eq!(TokenType::Function, exp.get_token().t_type);
-//             assert_eq!("fn(x, y) { (x + y) }", exp.string());
-//         } else {
-//             panic!("missing inner expression");
-//         }
+        let statements = program.statements;
+        assert_eq!(statements.len(), 1);
+        assert_eq!("fn(x, y) { (x + y) }", statements[0].string());
 
-//         let input = r#"fn() {   x+ y }"#.chars().collect();
-//         let lexer = Lexer::new(&input);
-//         let mut parser = Parser::new(lexer);
-//         let program = parser.parse_program();
+        let input = r#"fn() {   x+ y }"#.chars().collect();
+        let lexer = Lexer::new(&input);
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program();
 
-//         let statements = program.statements;
-//         assert_eq!(statements.len(), 1);
-//         if let Some(exp) = statements[0].get_expression() {
-//             assert_eq!(TokenType::Function, exp.get_token().t_type);
-//             assert_eq!("fn() { (x + y) }", exp.string());
-//         } else {
-//             panic!("missing inner expression");
-//         }
-//     }
+        let statements = program.statements;
+        assert_eq!(statements.len(), 1);
+        assert_eq!("fn() { (x + y) }", statements[0].string());
+    }
 
-//     #[test]
-//     fn test_call_expression() {
-//         let input = "add(1, 2*3, 4+  5)".chars().collect();
-//         let l = Lexer::new(&input);
-//         let mut parser = Parser::new(l);
-//         let program = parser.parse_program();
+    #[test]
+    fn test_call_expression() {
+        let input = "add(1, 2*3, 4+  5)".chars().collect();
+        let l = Lexer::new(&input);
+        let mut parser = Parser::new(l);
+        let program = parser.parse_program();
 
-//         assert_eq!("add(1, (2 * 3), (4 + 5));", program.string());
-//         assert_eq!(program.statements.len(), 1);
-//         if let Some(exp) = program.statements[0].get_expression() {
-//             assert_eq!("add(1, (2 * 3), (4 + 5));", exp.string());
-//         } else {
-//             panic!("missing inner expression");
-//         }
-//     }
+        assert_eq!(program.statements.len(), 1);
+        assert_eq!("add(1, (2 * 3), (4 + 5));", program.statements[0].string());
+    }
 
-//     #[test]
-//     fn test_return_statements() {
-//         let input = r#"return 5;
-//     return 10;
-//     return 838383"#
-//             .chars()
-//             .collect();
+    #[test]
+    fn test_return_statements() {
+        let input = r#"return 5;
+    return 10;
+    return 838383"#
+            .chars()
+            .collect();
 
-//         let l = Lexer::new(&input);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        let l = Lexer::new(&input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         assert_eq!(program.statements.len(), 3);
-//         assert_eq!(
-//             program.statements[0].get_token(),
-//             Token {
-//                 t_value: None,
-//                 t_type: TokenType::Return
-//             }
-//         );
-//         assert_eq!(
-//             program.statements[1].get_token(),
-//             Token {
-//                 t_value: None,
-//                 t_type: TokenType::Return
-//             }
-//         );
-//         assert_eq!(
-//             program.statements[2].get_token(),
-//             Token {
-//                 t_value: None,
-//                 t_type: TokenType::Return
-//             }
-//         );
+        assert_eq!(program.statements.len(), 3);
 
-//         assert_eq!("return 5;", program.statements[0].string());
-//         assert_eq!("return 10;", program.statements[1].string());
-//         assert_eq!("return 838383;", program.statements[2].string());
-//     }
+        assert_eq!("return 5;", program.statements[0].string());
+        assert_eq!("return 10;", program.statements[1].string());
+        assert_eq!("return 838383;", program.statements[2].string());
+    }
 
-//     #[test]
-//     fn test_let_statements() {
-//         let input = r#"let x = 5;
-//     let y = 10;
-//     let foobar = 838383"#
-//             .chars()
-//             .collect();
+    #[test]
+    fn test_let_statements() {
+        let input = r#"let x = 5;
+    let y = 10;
+    let foobar = 838383"#
+            .chars()
+            .collect();
 
-//         let l = Lexer::new(&input);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        let l = Lexer::new(&input);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         assert_eq!(program.statements.len(), 3);
-//         assert_eq!(
-//             program.statements[0].get_token(),
-//             Token {
-//                 t_value: None,
-//                 t_type: TokenType::Let
-//             }
-//         );
-//         assert_eq!(
-//             program.statements[1].get_token(),
-//             Token {
-//                 t_value: None,
-//                 t_type: TokenType::Let
-//             }
-//         );
-//         assert_eq!(
-//             program.statements[2].get_token(),
-//             Token {
-//                 t_value: None,
-//                 t_type: TokenType::Let
-//             }
-//         );
+        assert_eq!(program.statements.len(), 3);
+        assert_eq!("let x = 5;", program.statements[0].string());
+        assert_eq!("let y = 10;", program.statements[1].string());
+        assert_eq!(
+            "let foobar = 838383;",
+            program.statements[2].string()
+        );
+    }
 
-//         assert_eq!("let x = 5;", program.statements[0].string());
-//         assert_eq!("let y = 10;", program.statements[1].string());
-//         assert_eq!("let foobar = 838383;", program.statements[2].string());
-//     }
+    #[test]
+    fn test_identifier_expression() {
+        let input = String::from("foobar;");
+        let c = input.chars().collect();
 
-//     #[test]
-//     fn test_identifier_expression() {
-//         let input = String::from("foobar;");
-//         let c = input.chars().collect();
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        assert_eq!(program.statements.len(), 1);
+        assert_eq!(
+            *program.statements[0],
+            Statement::Expression(Box::new(Expression::Identifier(Token {
+                t_type: TokenType::Ident,
+                t_value: Some(TokenValue::Literal(String::from("foobar"))),
+            })))
+        )
+    }
 
-//         assert_eq!(program.statements.len(), 1);
-//         let token = program.statements[0].get_token();
+    #[test]
+    fn test_boolean_literal_expression() {
+        let input = String::from("false;");
+        let c = input.chars().collect();
 
-//         if let Some(val) = token.t_value {
-//             assert!(token.t_type == TokenType::Ident);
-//             assert!(val == TokenValue::Literal(String::from("foobar")));
-//         } else {
-//             panic!("empty token")
-//         }
-//     }
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//     #[test]
-//     fn test_boolean_literal_expression() {
-//         let input = String::from("false;");
-//         let c = input.chars().collect();
+        assert_eq!(program.statements.len(), 1);
+        assert_eq!(
+            *program.statements[0],
+            Statement::Expression(Box::new(Expression::Boolean(Token {
+                t_type: TokenType::False,
+                t_value: None,
+            })))
+        );
 
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        let input = String::from("false == false");
+        let c = input.chars().collect();
 
-//         assert_eq!(program.statements.len(), 1);
-//         let token = program.statements[0].get_token();
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         assert!(token.t_type == TokenType::False);
-//         assert_eq!(
-//             program.statements[0]
-//                 .get_expression()
-//                 .as_ref()
-//                 .unwrap()
-//                 .string(),
-//             String::from("false")
-//         );
+        assert_eq!(program.statements.len(), 1);
+        assert_eq!("(false == false)", program.statements[0].string());
+    }
 
-//         let input = String::from("false == false");
-//         let c = input.chars().collect();
+    #[test]
+    fn test_integer_literal_expression() {
+        let input = String::from("5;");
+        let c = input.chars().collect();
 
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         assert_eq!(program.statements.len(), 1);
-//         if let Some(exp) = program.statements[0].get_expression() {
-//             assert_eq!(TokenType::Eq, exp.get_token().t_type);
-//             assert_eq!("(false == false)", exp.string());
-//             assert_eq!(
-//                 "false",
-//                 exp.get_left_subexpression().as_ref().unwrap().string()
-//             );
-//             assert_eq!(
-//                 "false",
-//                 exp.get_right_subexpression().as_ref().unwrap().string()
-//             );
-//         } else {
-//             panic!("no inner expression");
-//         }
-//     }
+        assert_eq!(program.statements.len(), 1);
+        assert_eq!(
+            *program.statements[0],
+            Statement::Expression(Box::new(Expression::Integer(Token {
+                t_type: TokenType::Int,
+                t_value: Some(TokenValue::Numeric(5)),
+            })))
+        );
+    }
 
-//     #[test]
-//     fn test_integer_literal_expression() {
-//         let input = String::from("5;");
-//         let c = input.chars().collect();
+    #[test]
+    fn test_prefix_expression() {
+        // !5; is an expression statement and also a prefix expression
+        let input = String::from("!5;");
+        let c = input.chars().collect();
 
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         assert_eq!(program.statements.len(), 1);
-//         let token = program.statements[0].get_token();
+        assert_eq!(program.statements.len(), 1);
+        assert_eq!(
+            *program.statements[0],
+            Statement::Expression(Box::new(Expression::Prefix(
+                Token {
+                    t_type: TokenType::Bang,
+                    t_value: None,
+                },
+                Box::new(Expression::Integer(Token {
+                    t_type: TokenType::Int,
+                    t_value: Some(TokenValue::Numeric(5))
+                }))
+            )))
+        );
 
-//         if let Some(val) = token.t_value {
-//             assert!(token.t_type == TokenType::Int);
-//             assert!(val == TokenValue::Numeric(5));
-//         } else {
-//             panic!("empty token")
-//         }
-//     }
+        let input = String::from("-15;");
+        let c = input.chars().collect();
 
-//     #[test]
-//     fn test_prefix_expression() {
-//         // !5; is an expression statement and also a prefix expression
-//         let input = String::from("!5;");
-//         let c = input.chars().collect();
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        assert_eq!(program.statements.len(), 1);
 
-//         assert_eq!(program.statements.len(), 1);
-//         let token = program.statements[0].get_token();
-//         assert_eq!(token.t_type, TokenType::Bang);
-//         let inner_expression = program.statements[0].get_expression();
-//         if let Some(exp) = inner_expression {
-//             let right = exp.get_right_subexpression();
-//             if let Some(right) = right {
-//                 assert_eq!(right.get_token().t_type, TokenType::Int);
-//                 assert_eq!(right.get_token().t_value, Some(TokenValue::Numeric(5)));
-//             } else {
-//                 panic!("no right subexpression");
-//             }
-//         } else {
-//             panic!("no inner expression");
-//         }
+        assert_eq!(
+            *program.statements[0],
+            Statement::Expression(Box::new(Expression::Prefix(
+                Token {
+                    t_type: TokenType::Minus,
+                    t_value: None,
+                },
+                Box::new(Expression::Integer(Token {
+                    t_type: TokenType::Int,
+                    t_value: Some(TokenValue::Numeric(15))
+                }))
+            )))
+        )
+    }
 
-//         let input = String::from("-15;");
-//         let c = input.chars().collect();
+    #[test]
+    fn test_infix_expression() {
+        struct InfixTest {
+            input: String,
+            statement: Statement,
+        }
 
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        let v = vec![
+            InfixTest {
+                input: String::from("5+5;"),
+                statement: Statement::Expression(Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(5)),
+                    })),
+                    Token {
+                        t_type: TokenType::Plus,
+                        t_value: None,
+                    },
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(5)),
+                    })),
+                ))),
+            },
+            InfixTest {
+                input: String::from(" 5 < 6"),
+                statement: Statement::Expression(Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(5)),
+                    })),
+                    Token {
+                        t_type: TokenType::LT,
+                        t_value: None,
+                    },
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(6)),
+                    })),
+                ))),
+            },
+            InfixTest {
+                input: String::from("5 != 7  ;"),
+                statement: Statement::Expression(Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(5)),
+                    })),
+                    Token {
+                        t_type: TokenType::NotEq,
+                        t_value: None,
+                    },
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(7)),
+                    })),
+                ))),
+            },
+            InfixTest {
+                input: String::from("5 / 1"),
+                statement: Statement::Expression(Box::new(Expression::Infix(
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(5)),
+                    })),
+                    Token {
+                        t_type: TokenType::Slash,
+                        t_value: None,
+                    },
+                    Box::new(Expression::Integer(Token {
+                        t_type: TokenType::Int,
+                        t_value: Some(TokenValue::Numeric(1)),
+                    })),
+                ))),
+            },
+        ];
 
-//         assert_eq!(program.statements.len(), 1);
-//         let token = program.statements[0].get_token();
-//         assert_eq!(token.t_type, TokenType::Minus);
-//         let inner_expression = program.statements[0].get_expression();
-//         if let Some(exp) = inner_expression {
-//             let right = exp.get_right_subexpression();
-//             if let Some(right) = right {
-//                 assert_eq!(right.get_token().t_type, TokenType::Int);
-//                 assert_eq!(right.get_token().t_value, Some(TokenValue::Numeric(15)));
-//             } else {
-//                 panic!("no right subexpression");
-//             }
-//         } else {
-//             panic!("no inner expression");
-//         }
-//     }
+        for t in v.iter() {
+            let input = t.input.chars().collect();
+            let l = Lexer::new(&input);
+            let mut p = Parser::new(l);
+            let program = p.parse_program();
+            assert_eq!(program.statements.len(), 1);
+            assert_eq!(*program.statements[0], t.statement);
+        }
+    }
 
-//     #[test]
-//     fn test_infix_expression() {
-//         struct InfixTest {
-//             input: String,
-//             left_int: i32,
-//             right_int: i32,
-//             operator: Token,
-//         }
+    #[test]
+    fn test_operator_precedence() {
+        struct PrecedenceTest {
+            input: Vec<char>,
+            output: String,
+        }
 
-//         let v = vec![
-//             InfixTest {
-//                 input: String::from("5+5;"),
-//                 left_int: 5,
-//                 right_int: 5,
-//                 operator: Token {
-//                     t_type: TokenType::Plus,
-//                     t_value: None,
-//                 },
-//             },
-//             InfixTest {
-//                 input: String::from(" 5 < 6"),
-//                 left_int: 5,
-//                 right_int: 6,
-//                 operator: Token {
-//                     t_type: TokenType::LT,
-//                     t_value: None,
-//                 },
-//             },
-//             InfixTest {
-//                 input: String::from("5 != 7  ;"),
-//                 left_int: 5,
-//                 right_int: 7,
-//                 operator: Token {
-//                     t_type: TokenType::NotEq,
-//                     t_value: None,
-//                 },
-//             },
-//             InfixTest {
-//                 input: String::from("5 / 1"),
-//                 left_int: 5,
-//                 right_int: 1,
-//                 operator: Token {
-//                     t_type: TokenType::Slash,
-//                     t_value: None,
-//                 },
-//             },
-//         ];
+        let v = vec![
+            PrecedenceTest {
+                input: "-a * b".chars().collect(),
+                output: String::from("((-a) * b)"),
+            },
+            PrecedenceTest {
+                input: "a + b * c + d / e - f".chars().collect(),
+                output: String::from("(((a + (b * c)) + (d / e)) - f)"),
+            },
+            PrecedenceTest {
+                input: "3 + 4 * 5 == 3 * 1 + 4 * 5".chars().collect(),
+                output: String::from("((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))"),
+            },
+            PrecedenceTest {
+                input: "2 - -3 * 4".chars().collect(),
+                output: String::from("(2 - ((-3) * 4))"),
+            },
+            PrecedenceTest {
+                input: "2 - 3 < 0 == true".chars().collect(),
+                output: String::from("(((2 - 3) < 0) == true)"),
+            },
+            PrecedenceTest {
+                input: "!(true == true)".chars().collect(),
+                output: String::from("(!(true == true))"),
+            },
+            PrecedenceTest {
+                input: "1 + (2 + 3) + 4".chars().collect(),
+                output: String::from("((1 + (2 + 3)) + 4)"),
+            },
+        ];
 
-//         for t in v.iter() {
-//             let input = t.input.chars().collect();
-//             let l = Lexer::new(&input);
-//             let mut p = Parser::new(l);
-//             let program = p.parse_program();
-//             assert_eq!(program.statements.len(), 1);
-//             let exp = program.statements[0].get_expression();
-//             if let Some(exp) = exp {
-//                 match (exp.get_left_subexpression(), exp.get_right_subexpression()) {
-//                     (Some(e_left), Some(e_right)) => {
-//                         assert_eq!(
-//                             e_left.get_token().t_value,
-//                             Some(TokenValue::Numeric(t.left_int))
-//                         );
-//                         assert_eq!(
-//                             e_right.get_token().t_value,
-//                             Some(TokenValue::Numeric(t.right_int))
-//                         );
-//                     }
-//                     _ => panic!("inner expression missing"),
-//                 }
-//                 assert_eq!(exp.get_token(), t.operator);
-//             } else {
-//                 panic!("no inner expression");
-//             }
-//         }
-//     }
+        for test in v.iter() {
+            let l = Lexer::new(&test.input);
+            let mut p = Parser::new(l);
+            let program = p.parse_program();
+            assert_eq!(test.output, program.statements[0].string());
+        }
+    }
 
-//     #[test]
-//     fn test_operator_precedence() {
-//         struct PrecedenceTest {
-//             input: Vec<char>,
-//             output: String,
-//         }
+    #[test]
+    fn test_if_expression() {
+        let input = String::from("if (x < y) { let x = 5; x } else { let x = 6; x");
+        let c = input.chars().collect();
 
-//         let v = vec![
-//             PrecedenceTest {
-//                 input: "-a * b".chars().collect(),
-//                 output: String::from("((-a) * b)"),
-//             },
-//             PrecedenceTest {
-//                 input: "a + b * c + d / e - f".chars().collect(),
-//                 output: String::from("(((a + (b * c)) + (d / e)) - f)"),
-//             },
-//             PrecedenceTest {
-//                 input: "3 + 4 * 5 == 3 * 1 + 4 * 5".chars().collect(),
-//                 output: String::from("((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))"),
-//             },
-//             PrecedenceTest {
-//                 input: "2 - -3 * 4".chars().collect(),
-//                 output: String::from("(2 - ((-3) * 4))"),
-//             },
-//             PrecedenceTest {
-//                 input: "2 - 3 < 0 == true".chars().collect(),
-//                 output: String::from("(((2 - 3) < 0) == true)"),
-//             },
-//             PrecedenceTest {
-//                 input: "!(true == true)".chars().collect(),
-//                 output: String::from("(!(true == true))"),
-//             },
-//             PrecedenceTest {
-//                 input: "1 + (2 + 3) + 4".chars().collect(),
-//                 output: String::from("((1 + (2 + 3)) + 4)"),
-//             },
-//         ];
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         for test in v.iter() {
-//             let l = Lexer::new(&test.input);
-//             let mut p = Parser::new(l);
-//             let program = p.parse_program();
-//             assert_eq!(test.output, program.string());
-//         }
-//     }
+        assert_eq!(program.statements.len(), 1);
+        assert_eq!(
+            "if (x < y) { let x = 5;\nx } else { let x = 6;\nx }",
+            program.statements[0].string(),
+        );
+    }
 
-//     #[test]
-//     fn test_if_expression() {
-//         let input = String::from("if (x < y) { let x = 5; x } else { let x = 6; x");
-//         let c = input.chars().collect();
+    #[test]
+    fn test_string_expression() {
+        let input = String::from(r#"let x = "hi"; x"#);
+        let c = input.chars().collect();
 
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = p.parse_program();
+        let l = Lexer::new(&c);
+        let mut p = Parser::new(l);
+        let program = p.parse_program();
 
-//         assert_eq!(program.statements.len(), 1);
-//         let token = program.statements[0].get_token();
-//         assert_eq!(token.t_type, TokenType::If);
-//         if let Some(exp) = program.statements[0].get_expression() {
-//             assert_eq!(
-//                 "if (x < y) { let x = 5;\nx } else { let x = 6;\nx }",
-//                 exp.string()
-//             );
-//         } else {
-//             panic!("no inner expression");
-//         }
-//     }
+        assert_eq!(program.statements.len(), 2);
 
-//     #[test]
-//     fn test_string_expression() {
-//         let input = String::from(r#"let x = "hi"; x"#);
-//         let c = input.chars().collect();
-
-//         let l = Lexer::new(&c);
-//         let mut p = Parser::new(l);
-//         let program = Box::new(p.parse_program());
-
-//         assert_eq!(program.statements.len(), 2);
-//         let mut env = Box::new(Environment::new());
-//         assert_eq!(String::from("hi"), program.eval(&mut env).inspect());
-//     }
-// }
+        let mut evaluator = Evaluator::new();
+        assert_eq!(
+            String::from("hi"),
+            evaluator.eval_program(program).inspect()
+        );
+    }
+}
