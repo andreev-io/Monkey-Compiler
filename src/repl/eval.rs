@@ -25,8 +25,8 @@ impl Evaluator {
             result = self.eval_statement(&mut statement);
 
             match result {
-                Object::ReturnValue(_) => {
-                    return result;
+                Object::ReturnValue(res) => {
+                    return *res;
                 }
                 _ => {}
             }
@@ -95,11 +95,15 @@ impl Evaluator {
                 let f = self.eval_expression(func);
 
                 let mut res = Vec::new();
-                for arg in args {
+                for arg in args.iter_mut() {
                     res.push(self.eval_expression(arg));
                 }
 
-                self.apply_function(f, res)
+                let ret = self.apply_function(f, res);
+                match ret {
+                    Object::ReturnValue(value) => *value,
+                    _ => ret,
+                }
             }
             Expression::Array(expressions) => {
                 let mut array = Vec::new();
@@ -111,7 +115,6 @@ impl Evaluator {
             }
             Expression::Infix(left, token, right) => {
                 let (left, right) = (self.eval_expression(left), self.eval_expression(right));
-
                 match (left, &token.t_type, right) {
                     (Object::Integer(l), TokenType::Plus, Object::Integer(r)) => {
                         Object::Integer(l + r)
@@ -356,22 +359,40 @@ mod test {
 
     #[test]
     fn test_recursion() {
-        let input = "let factorial = fn(x) {
-            if (x == 0) {
-                1
+        // let input = "let factorial = fn(x) {
+        //     if (x == 0) {
+        //         1
+        //     } else {
+        //         x * factorial(x-1)
+        //     }
+        // }
+
+        // factorial(5)"
+        //     .chars()
+        //     .collect();
+        // let l = Lexer::new(&input);
+        // let mut p = Parser::new(l);
+        // let program = p.parse_program();
+        // let output = Evaluator::new().eval_program(program).inspect();
+        // assert_eq!(output, String::from("120"));
+
+        let input = "let fibonacci = fn(x) { if (x == 0) {
+            0
             } else {
-                x * factorial(x-1)
-            }
-        }
-        
-        factorial(5)"
+            if (x == 1) {
+            return 1; } else {
+                     fibonacci(x - 1) + fibonacci(x - 2);
+                   }
+            } };
+            
+            fibonacci(7)"
             .chars()
             .collect();
         let l = Lexer::new(&input);
         let mut p = Parser::new(l);
         let program = p.parse_program();
         let output = Evaluator::new().eval_program(program).inspect();
-        assert_eq!(output, String::from("120"));
+        assert_eq!(output, String::from("13"));
     }
 
     #[test]

@@ -72,9 +72,14 @@ true, but is a useful abstraction).
 
 This implementation relies heavily on cloning Rust values. Consider the following example:
 ```
->>> let v = [1, 2, 3]; let superfunc = fn(a) { let b = a; b[0] + b[1] }; superfunc(v)
+>>> let v = [1, 2, 3]; 
 
-3
+let superfunc = fn(a) { 
+    let b = a; 
+    b[0] + b[1] 
+}; 
+
+3 == superfunc(v)
 ```
 
 When `superfunc` is called, `b` is created by cloning the array `a`, but is deallocated when superfunc returns.
@@ -92,5 +97,21 @@ let factorial = fn(x) {
 factorial(5)
 ```
 
-Notice that we could've allocated anything within the recursively called
+```
+let fibonacci = fn(x) { 
+    if (x == 0) {
+        0
+    } else {
+        if (x == 1) {
+            return 1; 
+        } else {
+            fibonacci(x - 1) + fibonacci(x - 2);
+        }
+    } 
+};
+            
+fibonacci(7)
+```
+
+Note that we could've allocated anything within the recursively called
 function, and the values would be successfully deallocated on return.
