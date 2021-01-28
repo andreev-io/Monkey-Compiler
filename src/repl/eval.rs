@@ -168,16 +168,13 @@ impl Evaluator {
                 TokenType::True => Object::Boolean(true),
                 _ => Object::Null,
             },
-            Expression::Identifier(token) => {
-                let ret = Object::Null;
-                match &token.t_value {
-                    Some(TokenValue::Literal(name)) => match self.env.get(name.to_string()) {
-                        Some(obj) => obj.clone(),
-                        _ => ret,
-                    },
-                    _ => ret,
-                }
-            }
+            Expression::Identifier(token) => match &token.t_value {
+                Some(TokenValue::Literal(name)) => match self.env.get(name.to_string()) {
+                    Some(obj) => obj.clone(),
+                    _ => Object::Null,
+                },
+                _ => Object::Null,
+            },
             Expression::String(token) => match &token.t_value {
                 Some(TokenValue::Literal(string)) => Object::String(string.to_string()),
                 _ => Object::Null,

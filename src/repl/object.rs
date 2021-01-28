@@ -44,7 +44,7 @@ impl Object {
                 s.push_str("fn(");
                 s.push_str(&v.join(", "));
                 s.push_str(") ");
-                s.push_str(&format!("{:?}", body));
+                s.push_str(&body.string());
                 s.push_str("\n");
 
                 s

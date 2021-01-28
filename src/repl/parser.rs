@@ -376,7 +376,7 @@ pub enum Expression {
 }
 
 impl Expression {
-    fn string(&self) -> String {
+    pub fn string(&self) -> String {
         match self {
             Expression::Index(left, right) => {
                 format!("({}[{}])", left.string(), right.string())
@@ -486,7 +486,7 @@ pub enum Statement {
 
 impl Statement {
     #[allow(dead_code)]
-    fn string(&self) -> String {
+    pub fn string(&self) -> String {
         match self {
             Statement::Block(statements) => {
                 let mut s: String = String::from("{ ");
