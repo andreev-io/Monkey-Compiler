@@ -14,34 +14,55 @@ impl Instructions {
     }
 }
 
-// Points at data in the constants pool. Single operand 2 bytes wide.
-pub const OP_CONSTANT: OpCode = 0;
+#[non_exhaustive]
+pub struct OP;
 
-pub const OP_ADD: OpCode = 1;
-
-struct Definition {
-    name: String,
-    operands_width: Vec<usize>,
+impl OP {
+    pub const CONSTANT: OpCode = 0;
+    pub const POP: OpCode = 1;
+    pub const ADD: OpCode = 2;
+    pub const SUB: OpCode = 3;
+    pub const DIV: OpCode = 4;
+    pub const MUL: OpCode = 5;
+    pub const TRUE: OpCode = 6;
+    pub const FALSE: OpCode = 7;
+    pub const EQ: OpCode = 8;
+    pub const NE: OpCode = 9;
+    pub const GT: OpCode = 10;
+    pub const NEG: OpCode = 11;
+    pub const NOT: OpCode = 12;
 }
+
+struct Definition(Vec<usize>);
 
 lazy_static! {
     static ref DEFINITIONS: HashMap<OpCode, Definition> = {
         let mut m = HashMap::new();
-        m.insert(
-            OP_CONSTANT,
-            Definition {
-                name: String::from("OpConstant"),
-                operands_width: vec![2],
-            },
-        );
+        m.insert(OP::CONSTANT, Definition(vec![2]));
 
-        m.insert(
-            OP_ADD,
-            Definition {
-                name: String::from("OpConstant"),
-                operands_width: vec![],
-            },
-        );
+        m.insert(OP::ADD, Definition(vec![]));
+
+        m.insert(OP::SUB, Definition(vec![]));
+
+        m.insert(OP::DIV, Definition(vec![]));
+
+        m.insert(OP::MUL, Definition(vec![]));
+
+        m.insert(OP::POP, Definition(vec![]));
+
+        m.insert(OP::TRUE, Definition(vec![]));
+
+        m.insert(OP::FALSE, Definition(vec![]));
+
+        m.insert(OP::EQ, Definition(vec![]));
+
+        m.insert(OP::NE, Definition(vec![]));
+
+        m.insert(OP::GT, Definition(vec![]));
+
+        m.insert(OP::NEG, Definition(vec![]));
+
+        m.insert(OP::NOT, Definition(vec![]));
 
         m
     };
@@ -53,12 +74,12 @@ pub fn make(op: OpCode, operands: &[i32]) -> Instructions {
         None => return Instructions(Vec::new()),
     };
 
-    let mut instruction: Vec<u8> = vec![0; def.operands_width.iter().fold(1, |acc, len| acc + len)];
+    let mut instruction: Vec<u8> = vec![0; def.0.iter().fold(1, |acc, len| acc + len)];
     instruction[0] = op;
 
     let mut offset = 1;
     for (i, operand) in operands.iter().enumerate() {
-        let width = def.operands_width[i];
+        let width = def.0[i];
         let bytes = operand.to_be_bytes();
         let mut bytes_iter = bytes.iter();
         if bytes.len() > width {
@@ -88,14 +109,14 @@ mod test {
 
         let tests = vec![
             T {
-                op: code::OP_CONSTANT,
+                op: code::OP::CONSTANT,
                 operands: &[65534],
-                expected: code::Instructions(vec![code::OP_CONSTANT, 0xFF, 0xFE]),
+                expected: code::Instructions(vec![code::OP::CONSTANT, 0xFF, 0xFE]),
             },
             T {
-                op: code::OP_ADD,
+                op: code::OP::ADD,
                 operands: &[],
-                expected: code::Instructions(vec![code::OP_ADD]),
+                expected: code::Instructions(vec![code::OP::ADD]),
             },
         ];
 

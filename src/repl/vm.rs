@@ -1,11 +1,11 @@
-use crate::repl::code;
-use crate::repl::code::{Instructions, OpCode};
+use crate::repl::code::{Instructions, OpCode, OP};
 use crate::repl::compiler;
 use crate::repl::object::Object;
 
 const STACK_SIZE: usize = 2048;
 
 pub struct VM {
+    last_popped: Object,
     constants: Vec<Object>,
     instructions: Instructions,
 
@@ -19,7 +19,12 @@ impl VM {
             constants: code.constants,
             instructions: code.instructions,
             stack: Vec::with_capacity(STACK_SIZE),
+            last_popped: Object::Null,
         }
+    }
+
+    pub fn get_last_popped(&self) -> Object {
+        self.last_popped.clone()
     }
 
     pub fn run(&mut self) {
@@ -29,7 +34,11 @@ impl VM {
             let op = self.instructions.0[ip] as OpCode;
             // decode
             match op {
-                code::OP_CONSTANT => {
+                OP::POP => {
+                    self.last_popped = self.pop();
+                    ip += 1;
+                }
+                OP::CONSTANT => {
                     let const_index = u16::from_be_bytes([
                         self.instructions.0[ip + 1],
                         self.instructions.0[ip + 2],
@@ -41,11 +50,31 @@ impl VM {
 
                     ip += 3;
                 }
-                code::OP_ADD => {
-                    let right = self.pop();
-                    let left = self.pop();
+                OP::TRUE | OP::FALSE => {
+                    if op == OP::TRUE {
+                        self.push(Object::Boolean(true))
+                    } else {
+                        self.push(Object::Boolean(false))
+                    }
 
-                    self.push(left + right);
+                    ip += 1;
+                }
+                OP::GT | OP::EQ | OP::NE => {
+                    self.exec_comparison_op(op);
+                    ip += 1;
+                }
+                OP::NOT | OP::NEG => {
+                    let operand = self.pop();
+                    if op == OP::NEG {
+                        self.push(-operand)
+                    } else {
+                        self.push(!operand)
+                    }
+
+                    ip += 1;
+                }
+                OP::ADD | OP::DIV | OP::MUL | OP::SUB => {
+                    self.exec_binary_op(op);
                     ip += 1;
                 }
                 _ => ip += 1,
@@ -53,8 +82,46 @@ impl VM {
         }
     }
 
-    pub fn get_stack(&mut self) -> Vec<Object> {
-        self.stack.clone()
+    fn exec_comparison_op(&mut self, op: OpCode) {
+        let left = self.pop();
+        let right = self.pop();
+
+        match op {
+            OP::GT => self.push(Object::Boolean(left > right)),
+            OP::NE => self.push(Object::Boolean(left != right)),
+            OP::EQ => self.push(Object::Boolean(left == right)),
+            _ => {}
+        }
+    }
+
+    fn exec_binary_op(&mut self, op: OpCode) {
+        match op {
+            OP::ADD => {
+                let right = self.pop();
+                let left = self.pop();
+
+                self.push(left + right);
+            }
+            OP::MUL => {
+                let right = self.pop();
+                let left = self.pop();
+
+                self.push(left * right);
+            }
+            OP::SUB => {
+                let right = self.pop();
+                let left = self.pop();
+
+                self.push(left - right);
+            }
+            OP::DIV => {
+                let right = self.pop();
+                let left = self.pop();
+
+                self.push(left / right);
+            }
+            _ => {}
+        }
     }
 
     fn push(&mut self, obj: Object) {

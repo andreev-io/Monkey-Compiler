@@ -1,4 +1,4 @@
-use crate::repl::{eval::Evaluator, lexer::Lexer, parser::Parser, compiler::Compiler, vm::VM};
+use crate::repl::{compiler::Compiler, eval::Evaluator, lexer::Lexer, parser::Parser, vm::VM};
 use std::io::{Read, Write};
 
 mod code;
@@ -25,14 +25,14 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let mut parser = Parser::new(lex);
         let program = parser.parse_program();
 
-        let mut comp = Compiler::new();
+        let comp = Compiler::new();
         let bytecode = comp.compile(program);
 
         let mut machine = VM::new(bytecode);
         machine.run();
 
-        let stack = machine.get_stack();
+        let popped = machine.get_last_popped();
 
-        writeln!(stdout, "{:?}", stack)?;
+        writeln!(stdout, "{:?}", popped)?;
     }
 }
