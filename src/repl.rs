@@ -1,14 +1,16 @@
-use crate::repl::{eval::Evaluator, lexer::Lexer, parser::Parser};
+use crate::repl::{eval::Evaluator, lexer::Lexer, parser::Parser, compiler::Compiler, vm::VM};
 use std::io::{Read, Write};
 
+mod code;
+mod compiler;
 mod eval;
 mod lexer;
 mod object;
 mod parser;
+mod vm;
 
 pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std::io::Error> {
     writeln!(stdout, "Welcome to the Monkey REPL!")?;
-    let mut evaluator = Evaluator::new();
 
     loop {
         let mut buffer = String::new();
@@ -23,6 +25,14 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let mut parser = Parser::new(lex);
         let program = parser.parse_program();
 
-        writeln!(stdout, "{}", evaluator.eval_program(program).inspect())?;
+        let mut comp = Compiler::new();
+        let bytecode = comp.compile(program);
+
+        let mut machine = VM::new(bytecode);
+        machine.run();
+
+        let stack = machine.get_stack();
+
+        writeln!(stdout, "{:?}", stack)?;
     }
 }

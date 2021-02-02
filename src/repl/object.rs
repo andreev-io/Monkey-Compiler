@@ -1,7 +1,9 @@
 use crate::repl::lexer::Token;
 use crate::repl::parser::Statement;
 use core::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::ops::{Add, Div, Mul, Neg, Not, Sub};
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -13,6 +15,104 @@ pub enum Object {
     ReturnValue(Box<Object>),
     Array(Vec<Box<Object>>),
     Null,
+}
+
+impl PartialEq for Object {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Object::Integer(left), Object::Integer(right)) => left == right,
+            (Object::Boolean(left), Object::Boolean(right)) => left == right,
+            (Object::String(left), Object::String(right)) => left == right,
+            (_, _) => false,
+        }
+    }
+}
+
+impl PartialOrd for Object {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Object::Integer(left), Object::Integer(right)) => {
+                if left > right {
+                    Some(Ordering::Less)
+                } else if left == right {
+                    Some(Ordering::Equal)
+                } else {
+                    Some(Ordering::Greater)
+                }
+            }
+            (_, _) => None,
+        }
+    }
+}
+
+impl Neg for Object {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        match self {
+            Object::Integer(i) => Object::Integer(-i),
+            _ => Object::Null,
+        }
+    }
+}
+
+impl Not for Object {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        match self {
+            Object::Boolean(b) => Object::Boolean(!b),
+            Object::Null => Object::Boolean(true),
+            _ => Object::Boolean(false),
+        }
+    }
+}
+
+impl Mul for Object {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            (Object::Integer(left), Object::Integer(right)) => Object::Integer(left * right),
+            (_, _) => Object::Null,
+        }
+    }
+}
+
+impl Div for Object {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            (Object::Integer(left), Object::Integer(right)) => Object::Integer(left / right),
+            (_, _) => Object::Null,
+        }
+    }
+}
+
+impl Add for Object {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            (Object::Integer(left), Object::Integer(right)) => Object::Integer(left + right),
+            (Object::String(left), Object::String(right)) => {
+                Object::String(format!("{}{}", left, right))
+            }
+            (_, _) => Object::Null,
+        }
+    }
+}
+
+impl Sub for Object {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        match (self, rhs) {
+            (Object::Integer(left), Object::Integer(right)) => Object::Integer(left - right),
+            (_, _) => Object::Null,
+        }
+    }
 }
 
 impl Object {

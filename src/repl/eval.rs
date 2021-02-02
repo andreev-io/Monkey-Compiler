@@ -15,7 +15,7 @@ impl Evaluator {
         }
     }
 
-    pub fn new_with_environment(env: Rc<RefCell<Environment>>) -> Evaluator {
+    fn new_with_environment(env: Rc<RefCell<Environment>>) -> Evaluator {
         Evaluator { env }
     }
 
@@ -35,7 +35,7 @@ impl Evaluator {
         result
     }
 
-    pub fn eval_statement(&mut self, statement: &mut Statement) -> Object {
+    fn eval_statement(&mut self, statement: &mut Statement) -> Object {
         match statement {
             Statement::Block(statements) => self.eval_statements(statements),
             Statement::Let(id, expr) => self.eval_let(id, expr),
@@ -74,7 +74,7 @@ impl Evaluator {
         Object::Null
     }
 
-    pub fn eval_expression(&mut self, expression: &mut Expression) -> Object {
+    fn eval_expression(&mut self, expression: &mut Expression) -> Object {
         match expression {
             Expression::None => Object::Null,
             Expression::Index(array_expr, index_expr) => {
@@ -115,57 +115,24 @@ impl Evaluator {
             }
             Expression::Infix(left, token, right) => {
                 let (left, right) = (self.eval_expression(left), self.eval_expression(right));
-                match (left, &token.t_type, right) {
-                    (Object::Integer(l), TokenType::Plus, Object::Integer(r)) => {
-                        Object::Integer(l + r)
-                    }
-                    (Object::Integer(l), TokenType::Minus, Object::Integer(r)) => {
-                        Object::Integer(l - r)
-                    }
-                    (Object::Integer(l), TokenType::Asterisk, Object::Integer(r)) => {
-                        Object::Integer(l * r)
-                    }
-                    (Object::Integer(l), TokenType::Slash, Object::Integer(r)) => {
-                        Object::Integer(l / r)
-                    }
-                    (Object::Integer(l), TokenType::LT, Object::Integer(r)) => {
-                        Object::Boolean(l < r)
-                    }
-                    (Object::Integer(l), TokenType::GT, Object::Integer(r)) => {
-                        Object::Boolean(l > r)
-                    }
-                    (Object::Integer(l), TokenType::Eq, Object::Integer(r)) => {
-                        Object::Boolean(l == r)
-                    }
-                    (Object::Integer(l), TokenType::NotEq, Object::Integer(r)) => {
-                        Object::Boolean(l != r)
-                    }
-                    (Object::Boolean(l), TokenType::Eq, Object::Boolean(r)) => {
-                        Object::Boolean(l == r)
-                    }
-                    (Object::Boolean(l), TokenType::NotEq, Object::Boolean(r)) => {
-                        Object::Boolean(l != r)
-                    }
-                    (Object::String(l), TokenType::Plus, Object::String(r)) => {
-                        Object::String(format!("{}{}", l, r))
-                    }
-                    (Object::String(l), TokenType::Eq, Object::String(r)) => {
-                        Object::Boolean(l == r)
-                    }
-                    (Object::String(l), TokenType::NotEq, Object::String(r)) => {
-                        Object::Boolean(l != r)
-                    }
-                    (_, _, _) => Object::Null,
+                match (&token.t_type) {
+                    TokenType::Plus => left + right,
+                    TokenType::Minus => left - right,
+                    TokenType::Asterisk => left * right,
+                    TokenType::Slash => left / right,
+                    TokenType::LT => Object::Boolean(left > right),
+                    TokenType::GT => Object::Boolean(left < right),
+                    TokenType::Eq => Object::Boolean(left == right),
+                    TokenType::NotEq => Object::Boolean(left != right),
+                    _ => Object::Null,
                 }
             }
             Expression::Prefix(token, expr) => {
                 let right = self.eval_expression(expr);
-                match (&token.t_type, right) {
-                    (TokenType::Bang, Object::Boolean(b)) => Object::Boolean(!b),
-                    (TokenType::Bang, Object::Null) => Object::Boolean(true),
-                    (TokenType::Bang, _) => Object::Boolean(false),
-                    (TokenType::Minus, Object::Integer(i)) => Object::Integer(-1 * i),
-                    (_, _) => Object::Null,
+                match &token.t_type {
+                    TokenType::Bang => !right,
+                    TokenType::Minus => -right,
+                    _ => Object::Null,
                 }
             }
             Expression::Boolean(token) => match token.t_type {
@@ -359,23 +326,6 @@ mod test {
 
     #[test]
     fn test_recursion() {
-        // let input = "let factorial = fn(x) {
-        //     if (x == 0) {
-        //         1
-        //     } else {
-        //         x * factorial(x-1)
-        //     }
-        // }
-
-        // factorial(5)"
-        //     .chars()
-        //     .collect();
-        // let l = Lexer::new(&input);
-        // let mut p = Parser::new(l);
-        // let program = p.parse_program();
-        // let output = Evaluator::new().eval_program(program).inspect();
-        // assert_eq!(output, String::from("120"));
-
         let input = "let fibonacci = fn(x) { if (x == 0) {
             0
             } else {
