@@ -3,6 +3,7 @@ use crate::repl::code::{Instructions, OpCode, OP};
 use crate::repl::lexer::{TokenType, TokenValue};
 use crate::repl::object::Object;
 use crate::repl::parser::{Expression, Program, Statement};
+use std::collections::HashMap;
 use std::convert::TryInto;
 
 #[derive(Clone)]
@@ -17,11 +18,53 @@ pub struct Compiler {
 
     last_instruction: Option<EmittedInstruction>,
     previous_instruction: Option<EmittedInstruction>,
+
+    pub symbol_table: SymbolTable,
 }
 
+#[derive(Debug)]
 pub struct Bytecode {
     pub instructions: Instructions,
     pub constants: Vec<Object>,
+}
+
+enum SymbolScope {
+    Global,
+}
+
+struct Symbol {
+    name: String,
+    scope: SymbolScope,
+    index: usize,
+}
+
+pub struct SymbolTable(HashMap<String, Symbol>);
+
+impl SymbolTable {
+    pub fn new() -> SymbolTable {
+        SymbolTable(HashMap::new())
+    }
+
+    fn define(&mut self, name: String) -> usize {
+        let symbol = Symbol {
+            name: name.clone(),
+            scope: SymbolScope::Global,
+            index: self.0.len(),
+        };
+
+        let symbol_index = symbol.index;
+
+        self.0.insert(name.clone(), symbol);
+        symbol_index
+    }
+
+    fn resolve(&mut self, name: String) -> Option<usize> {
+        if let Some(symbol) = self.0.get(&name) {
+            Some(symbol.index)
+        } else {
+            None
+        }
+    }
 }
 
 impl Compiler {
@@ -32,22 +75,42 @@ impl Compiler {
 
             last_instruction: None,
             previous_instruction: None,
+
+            symbol_table: SymbolTable::new(),
         }
     }
 
-    pub fn compile(mut self, p: Program) -> Bytecode {
+    pub fn new_with_state(s: SymbolTable, constants: Vec<Object>) -> Compiler {
+        let mut c = Compiler::new();
+        c.symbol_table = s;
+        c.constants = constants;
+        c
+    }
+
+    pub fn compile(mut self, p: Program) -> (Bytecode, SymbolTable) {
         for statement in p.statements {
             self.compile_statement(*statement);
         }
 
-        Bytecode {
+        (Bytecode {
             instructions: self.instructions,
             constants: self.constants,
-        }
+        }, self.symbol_table)
     }
 
     fn compile_statement(&mut self, s: Statement) {
         match s {
+            Statement::Let(token, exp) => {
+                self.compile_expression(*exp);
+
+                match token.t_value.unwrap() {
+                    TokenValue::Literal(name) => {
+                        let symbol_index = self.symbol_table.define(name);
+                        self.emit_instruction(OP::SET_GLOB, &[symbol_index as i32]);
+                    }
+                    _ => {}
+                }
+            }
             Statement::Expression(exp) => {
                 self.compile_expression(*exp);
                 self.emit_instruction(OP::POP, &[]);
@@ -63,6 +126,16 @@ impl Compiler {
 
     fn compile_expression(&mut self, e: Expression) {
         match e {
+            Expression::Identifier(token) => match token.t_value.unwrap() {
+                TokenValue::Literal(name) => {
+                    if let Some(symbol_index) = self.symbol_table.resolve(name.clone()) {
+                        self.emit_instruction(OP::GET_GLOB, &[symbol_index as i32]);
+                    } else {
+                        panic!("undefined variable {}", name);
+                    }
+                }
+                _ => {}
+            },
             Expression::If(condition, consequence, alternative) => {
                 self.compile_expression(*condition);
 

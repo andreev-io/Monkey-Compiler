@@ -115,7 +115,7 @@ impl Evaluator {
             }
             Expression::Infix(left, token, right) => {
                 let (left, right) = (self.eval_expression(left), self.eval_expression(right));
-                match (&token.t_type) {
+                match &token.t_type {
                     TokenType::Plus => left + right,
                     TokenType::Minus => left - right,
                     TokenType::Asterisk => left * right,

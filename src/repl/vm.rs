@@ -2,7 +2,9 @@ use crate::repl::code::{Instructions, OpCode, OP};
 use crate::repl::compiler;
 use crate::repl::object::Object;
 
-const STACK_SIZE: usize = 2048;
+pub const STACK_SIZE: usize = 2048;
+
+pub const MAX_GLOBALS: usize = 65536;
 
 pub struct VM {
     last_popped: Object,
@@ -11,16 +13,29 @@ pub struct VM {
 
     // vectors are so convenient we won't even have to maintain a stack pointer
     stack: Vec<Object>,
+
+    pub globals: Vec<Object>,
 }
 
 impl VM {
     pub fn new(code: compiler::Bytecode) -> VM {
+        let mut globals = Vec::with_capacity(MAX_GLOBALS);
+        globals.resize_with(MAX_GLOBALS, Default::default);
+        let stack = Vec::with_capacity(STACK_SIZE);
+
         VM {
             constants: code.constants,
             instructions: code.instructions,
-            stack: Vec::with_capacity(STACK_SIZE),
+            stack: stack,
             last_popped: Object::Null,
+            globals: globals,
         }
+    }
+
+    pub fn new_with_existing_globals(code: compiler::Bytecode, globals: Vec<Object>) -> VM {
+        let mut vm = VM::new(code);
+        vm.globals = globals;
+        vm
     }
 
     pub fn get_last_popped(&self) -> Object {
@@ -34,6 +49,26 @@ impl VM {
             let op = self.instructions.0[ip] as OpCode;
             // decode
             match op {
+                OP::GET_GLOB => {
+                    let index = u16::from_be_bytes([
+                        self.instructions.0[ip + 1],
+                        self.instructions.0[ip + 2],
+                    ]) as usize;
+
+                    ip += 3;
+
+                    self.push(self.globals[index].clone());
+                }
+                OP::SET_GLOB => {
+                    let index = u16::from_be_bytes([
+                        self.instructions.0[ip + 1],
+                        self.instructions.0[ip + 2],
+                    ]) as usize;
+
+                    ip += 3;
+
+                    self.globals[index] = self.pop();
+                }
                 OP::SET_NULL => {
                     self.stack.push(Object::Null);
                     ip += 1;

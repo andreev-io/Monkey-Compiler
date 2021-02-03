@@ -17,6 +17,12 @@ pub enum Object {
     Null,
 }
 
+impl Default for Object {
+    fn default() -> Object {
+        Object::Null
+    }
+}
+
 impl PartialEq for Object {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {

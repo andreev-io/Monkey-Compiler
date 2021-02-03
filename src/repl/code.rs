@@ -49,10 +49,15 @@ impl OP {
     pub const JMP: OpCode = 14;
 
     pub const SET_NULL: OpCode = 15;
+
+    pub const GET_GLOB: OpCode = 16;
+    pub const SET_GLOB: OpCode = 17;
 }
 
 struct Definition(Vec<usize>);
 
+// Definitions are op codes mapped to an respective array of their arguments'
+// sizes, in bytes.
 lazy_static! {
     static ref DEFINITIONS: HashMap<OpCode, Definition> = {
         let mut m = HashMap::new();
@@ -72,6 +77,8 @@ lazy_static! {
         m.insert(OP::JMP_IF_NOT, Definition(vec![2]));
         m.insert(OP::JMP, Definition(vec![2]));
         m.insert(OP::SET_NULL, Definition(vec![]));
+        m.insert(OP::GET_GLOB, Definition(vec![2]));
+        m.insert(OP::SET_GLOB, Definition(vec![2]));
 
         m
     };

@@ -1,4 +1,4 @@
-use crate::repl::{compiler::Compiler, eval::Evaluator, lexer::Lexer, parser::Parser, vm::VM};
+use crate::repl::{compiler::Compiler, eval::Evaluator, lexer::Lexer, parser::Parser, vm::VM, object::Object};
 use std::io::{Read, Write};
 
 mod code;
@@ -11,6 +11,11 @@ mod vm;
 
 pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std::io::Error> {
     writeln!(stdout, "Welcome to the Monkey REPL!")?;
+
+    let mut constants: Vec<Object> = Vec::new();
+    let mut globals = Vec::with_capacity(vm::MAX_GLOBALS);
+    globals.resize_with(vm::MAX_GLOBALS, Default::default);
+    let mut symbols = compiler::SymbolTable::new();
 
     loop {
         let mut buffer = String::new();
@@ -25,13 +30,17 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let mut parser = Parser::new(lex);
         let program = parser.parse_program();
 
-        let comp = Compiler::new();
-        let bytecode = comp.compile(program);
+        let comp = Compiler::new_with_state(symbols, constants);
+        let (bytecode, new_symbols) = comp.compile(program);
+        symbols = new_symbols;
+        println!("{:?}", bytecode);
+        constants = bytecode.constants.clone();
 
-        let mut machine = VM::new(bytecode);
+        let mut machine = VM::new_with_existing_globals(bytecode, globals);
         machine.run();
 
         let popped = machine.get_last_popped();
+        globals = machine.globals;
 
         writeln!(stdout, "{:?}", popped)?;
     }
