@@ -34,6 +34,30 @@ impl VM {
             let op = self.instructions.0[ip] as OpCode;
             // decode
             match op {
+                OP::SET_NULL => {
+                    self.stack.push(Object::Null);
+                    ip += 1;
+                }
+                OP::JMP => {
+                    // TODO: make function to get operands
+                    ip = u16::from_be_bytes([
+                        self.instructions.0[ip + 1],
+                        self.instructions.0[ip + 2],
+                    ]) as usize;
+                }
+                OP::JMP_IF_NOT => {
+                    let pos = u16::from_be_bytes([
+                        self.instructions.0[ip + 1],
+                        self.instructions.0[ip + 2],
+                    ]) as usize;
+                    ip += 3;
+
+                    let cond = self.pop();
+                    match !cond {
+                        Object::Boolean(true) => ip = pos,
+                        _ => {}
+                    }
+                }
                 OP::POP => {
                     self.last_popped = self.pop();
                     ip += 1;

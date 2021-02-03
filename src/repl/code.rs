@@ -12,6 +12,14 @@ impl Instructions {
             self.0.push(instruction);
         }
     }
+
+    pub fn replace_at_offset(&mut self, offset: usize, instructions: Instructions) {
+        let mut i = 0;
+        for instruction in instructions.0 {
+            self.0[offset + i] = instruction;
+            i += 1;
+        }
+    }
 }
 
 #[non_exhaustive]
@@ -19,18 +27,28 @@ pub struct OP;
 
 impl OP {
     pub const CONSTANT: OpCode = 0;
+
     pub const POP: OpCode = 1;
+
     pub const ADD: OpCode = 2;
     pub const SUB: OpCode = 3;
     pub const DIV: OpCode = 4;
     pub const MUL: OpCode = 5;
+
     pub const TRUE: OpCode = 6;
     pub const FALSE: OpCode = 7;
+
     pub const EQ: OpCode = 8;
     pub const NE: OpCode = 9;
     pub const GT: OpCode = 10;
+
     pub const NEG: OpCode = 11;
     pub const NOT: OpCode = 12;
+
+    pub const JMP_IF_NOT: OpCode = 13;
+    pub const JMP: OpCode = 14;
+
+    pub const SET_NULL: OpCode = 15;
 }
 
 struct Definition(Vec<usize>);
@@ -39,30 +57,21 @@ lazy_static! {
     static ref DEFINITIONS: HashMap<OpCode, Definition> = {
         let mut m = HashMap::new();
         m.insert(OP::CONSTANT, Definition(vec![2]));
-
         m.insert(OP::ADD, Definition(vec![]));
-
         m.insert(OP::SUB, Definition(vec![]));
-
         m.insert(OP::DIV, Definition(vec![]));
-
         m.insert(OP::MUL, Definition(vec![]));
-
         m.insert(OP::POP, Definition(vec![]));
-
         m.insert(OP::TRUE, Definition(vec![]));
-
         m.insert(OP::FALSE, Definition(vec![]));
-
         m.insert(OP::EQ, Definition(vec![]));
-
         m.insert(OP::NE, Definition(vec![]));
-
         m.insert(OP::GT, Definition(vec![]));
-
         m.insert(OP::NEG, Definition(vec![]));
-
         m.insert(OP::NOT, Definition(vec![]));
+        m.insert(OP::JMP_IF_NOT, Definition(vec![2]));
+        m.insert(OP::JMP, Definition(vec![2]));
+        m.insert(OP::SET_NULL, Definition(vec![]));
 
         m
     };
