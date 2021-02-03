@@ -92,10 +92,13 @@ impl Compiler {
             self.compile_statement(*statement);
         }
 
-        (Bytecode {
-            instructions: self.instructions,
-            constants: self.constants,
-        }, self.symbol_table)
+        (
+            Bytecode {
+                instructions: self.instructions,
+                constants: self.constants,
+            },
+            self.symbol_table,
+        )
     }
 
     fn compile_statement(&mut self, s: Statement) {
@@ -126,6 +129,28 @@ impl Compiler {
 
     fn compile_expression(&mut self, e: Expression) {
         match e {
+            Expression::Index(arr, idx) => {
+                self.compile_expression(*arr);
+                self.compile_expression(*idx);
+                self.emit_instruction(OP::IDX, &[]);
+            }
+            Expression::Array(arr) => {
+                let len = arr.len();
+                for exp in arr {
+                    self.compile_expression(*exp);
+                }
+
+                self.emit_instruction(OP::ARR, &[len as i32]);
+            }
+            Expression::String(token) => {
+                let obj = match token.t_value {
+                    Some(TokenValue::Literal(string)) => Object::String(string),
+                    _ => Object::Null,
+                };
+
+                let address = [self.add_constant(obj) as i32];
+                self.emit_instruction(OP::CONSTANT, &address);
+            }
             Expression::Identifier(token) => match token.t_value.unwrap() {
                 TokenValue::Literal(name) => {
                     if let Some(symbol_index) = self.symbol_table.resolve(name.clone()) {

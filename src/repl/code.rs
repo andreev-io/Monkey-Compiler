@@ -52,6 +52,9 @@ impl OP {
 
     pub const GET_GLOB: OpCode = 16;
     pub const SET_GLOB: OpCode = 17;
+
+    pub const ARR: OpCode = 18;
+    pub const IDX: OpCode = 19;
 }
 
 struct Definition(Vec<usize>);
@@ -79,6 +82,8 @@ lazy_static! {
         m.insert(OP::SET_NULL, Definition(vec![]));
         m.insert(OP::GET_GLOB, Definition(vec![2]));
         m.insert(OP::SET_GLOB, Definition(vec![2]));
+        m.insert(OP::ARR, Definition(vec![2]));
+        m.insert(OP::IDX, Definition(vec![]));
 
         m
     };

@@ -49,6 +49,37 @@ impl VM {
             let op = self.instructions.0[ip] as OpCode;
             // decode
             match op {
+                OP::IDX => {
+                    let index = self.pop();
+                    let arr = self.pop();
+
+                    match index {
+                        Object::Integer(i) => {
+                            let o = arr[i as usize].clone();
+                            self.push(o);
+                        }
+                        _ => {}
+                    };
+
+                    ip += 1;
+                }
+                OP::ARR => {
+                    let len = u16::from_be_bytes([
+                        self.instructions.0[ip + 1],
+                        self.instructions.0[ip + 2],
+                    ]) as usize;
+
+                    ip += 3;
+
+                    let mut arr_proto = Vec::new();
+                    arr_proto.resize(len, Box::new(Object::Null));
+                    for i in (0..len).rev() {
+                        arr_proto[i] = Box::new(self.pop());
+                    }
+
+                    let array = Object::Array(arr_proto);
+                    self.push(array);
+                }
                 OP::GET_GLOB => {
                     let index = u16::from_be_bytes([
                         self.instructions.0[ip + 1],

@@ -3,7 +3,7 @@ use crate::repl::parser::Statement;
 use core::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::ops::{Add, Div, Mul, Neg, Not, Sub};
+use std::ops::{Add, Div, Index, Mul, Neg, Not, Sub};
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -15,6 +15,17 @@ pub enum Object {
     ReturnValue(Box<Object>),
     Array(Vec<Box<Object>>),
     Null,
+}
+
+impl Index<usize> for Object {
+    type Output = Object;
+
+    fn index(&self, idx: usize) -> &Object {
+        match self {
+            Object::Array(arr) => &arr[idx],
+            _ => &Object::Null,
+        }
+    }
 }
 
 impl Default for Object {
