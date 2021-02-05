@@ -1,3 +1,4 @@
+use crate::repl::code::Instructions;
 use crate::repl::lexer::Token;
 use crate::repl::parser::Statement;
 use core::cell::RefCell;
@@ -12,6 +13,11 @@ pub enum Object {
     Boolean(bool),
     String(String),
     Function(Vec<Token>, Box<Statement>, Rc<RefCell<Environment>>),
+    CompiledFunction {
+        ins: Instructions,
+        num_locals: usize,
+        num_args: usize,
+    },
     ReturnValue(Box<Object>),
     Array(Vec<Box<Object>>),
     Null,
@@ -169,6 +175,7 @@ impl Object {
                 s
             }
             Object::Null => String::from("null"),
+            _ => String::from("compiled function"),
         }
     }
 }

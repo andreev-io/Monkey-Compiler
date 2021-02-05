@@ -1,24 +1,26 @@
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-#[derive(Debug, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Eq, PartialEq, PartialOrd, Clone)]
 pub struct Instructions(pub Vec<u8>);
 
 pub type OpCode = u8;
 
 impl Instructions {
-    pub fn push_instructions(&mut self, instructions: Instructions) {
-        for instruction in instructions.0 {
-            self.0.push(instruction);
-        }
-    }
-
     pub fn replace_at_offset(&mut self, offset: usize, instructions: Instructions) {
         let mut i = 0;
         for instruction in instructions.0 {
             self.0[offset + i] = instruction;
             i += 1;
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, i: usize) -> OpCode {
+        self.0[i].clone()
     }
 }
 
@@ -55,6 +57,13 @@ impl OP {
 
     pub const ARR: OpCode = 18;
     pub const IDX: OpCode = 19;
+
+    pub const CALL: OpCode = 20;
+    pub const RET_VAL: OpCode = 21;
+    pub const RET_NONE: OpCode = 22;
+
+    pub const GET_LOC: OpCode = 23;
+    pub const SET_LOC: OpCode = 24;
 }
 
 struct Definition(Vec<usize>);
@@ -84,6 +93,11 @@ lazy_static! {
         m.insert(OP::SET_GLOB, Definition(vec![2]));
         m.insert(OP::ARR, Definition(vec![2]));
         m.insert(OP::IDX, Definition(vec![]));
+        m.insert(OP::CALL, Definition(vec![1]));
+        m.insert(OP::RET_VAL, Definition(vec![]));
+        m.insert(OP::RET_NONE, Definition(vec![]));
+        m.insert(OP::GET_LOC, Definition(vec![1]));
+        m.insert(OP::SET_LOC, Definition(vec![1]));
 
         m
     };

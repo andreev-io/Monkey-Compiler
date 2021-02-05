@@ -6,10 +6,32 @@ pub const STACK_SIZE: usize = 2048;
 
 pub const MAX_GLOBALS: usize = 65536;
 
+const MAX_FRAMES: usize = 1024;
+
+struct Frame {
+    ins: Instructions,
+    // instruction pointer
+    ip: usize,
+    // base pointer
+    bp: usize,
+}
+
+impl Frame {
+    fn new(ins: Instructions, bp: usize) -> Frame {
+        Frame {
+            ins: ins,
+            ip: 0,
+            bp,
+        }
+    }
+}
+
 pub struct VM {
+    // stack of (call) frames
+    frames: Vec<Frame>,
+
     last_popped: Object,
     constants: Vec<Object>,
-    instructions: Instructions,
 
     // vectors are so convenient we won't even have to maintain a stack pointer
     stack: Vec<Object>,
@@ -19,17 +41,34 @@ pub struct VM {
 
 impl VM {
     pub fn new(code: compiler::Bytecode) -> VM {
+        let main_frame = Frame::new(code.instructions, 0);
+        let mut frames = Vec::with_capacity(MAX_FRAMES);
+        frames.push(main_frame);
+
         let mut globals = Vec::with_capacity(MAX_GLOBALS);
         globals.resize_with(MAX_GLOBALS, Default::default);
         let stack = Vec::with_capacity(STACK_SIZE);
 
         VM {
             constants: code.constants,
-            instructions: code.instructions,
             stack: stack,
             last_popped: Object::Null,
             globals: globals,
+            frames,
         }
+    }
+
+    fn current_frame(&mut self) -> &mut Frame {
+        let last_idx = self.frames.len() - 1;
+        self.frames.get_mut(last_idx).unwrap()
+    }
+
+    fn pop_frame(&mut self) -> Option<Frame> {
+        self.frames.pop()
+    }
+
+    fn push_frame(&mut self, f: Frame) {
+        self.frames.push(f);
     }
 
     pub fn new_with_existing_globals(code: compiler::Bytecode, globals: Vec<Object>) -> VM {
@@ -43,12 +82,74 @@ impl VM {
     }
 
     pub fn run(&mut self) {
-        let mut ip = 0;
-        while ip < self.instructions.0.len() {
-            // fetch
-            let op = self.instructions.0[ip] as OpCode;
-            // decode
-            match op {
+        while self.current_frame().ip < self.current_frame().ins.len() {
+            let ip = self.current_frame().ip;
+            let op = self.current_frame().ins.get(ip);
+            match self.current_frame().ins.get(ip) {
+                OP::GET_LOC => {
+                    let idx = u8::from_be_bytes([self.current_frame().ins.get(ip + 1)]) as usize;
+                    self.current_frame().ip += 2;
+
+                    let bp = self.current_frame().bp;
+                    self.push(self.stack[bp + idx].clone());
+                }
+                OP::SET_LOC => {
+                    let idx = u8::from_be_bytes([self.current_frame().ins.get(ip + 1)]) as usize;
+                    self.current_frame().ip += 2;
+                    let local = self.pop();
+                    let bp = self.current_frame().bp;
+                    self.stack[bp + idx] = local;
+                }
+                OP::RET_NONE => {
+                    // pop the call frame
+                    let popped_bp = self.pop_frame().unwrap().bp;
+                    // pop local bindings
+                    while self.stack.len() >= popped_bp {
+                        self.pop();
+                    }
+
+                    self.push(Object::Null);
+                }
+                OP::RET_VAL => {
+                    // pop the return value
+                    let ret_val = self.pop();
+                    // pop the call frame
+                    let popped_bp = self.pop_frame().unwrap().bp;
+                    // pop local bindings
+                    while self.stack.len() > popped_bp {
+                        self.pop();
+                    }
+
+                    // push the return value
+                    self.push(ret_val);
+                }
+                OP::CALL => {
+                    let num_passed_args =
+                        u8::from_be_bytes([self.current_frame().ins.get(ip + 1)]) as usize;
+                    let f = self.stack.remove(self.stack.len() - 1 - num_passed_args);
+
+                    // important to advance current frame before pushing a new
+                    // frame
+                    self.current_frame().ip += 2;
+                    match f {
+                        Object::CompiledFunction {
+                            ins,
+                            num_locals,
+                            num_args,
+                        } => {
+                            if num_passed_args != num_args {
+                                panic!("got {} params expected {}", num_passed_args, num_args);
+                            }
+
+                            self.push_frame(Frame::new(ins.clone(), self.stack.len() - num_args));
+                            // Allocate space for local bindings on the stack.
+                            for _ in 0..num_locals {
+                                self.push(Object::Null);
+                            }
+                        }
+                        _ => {}
+                    };
+                }
                 OP::IDX => {
                     let index = self.pop();
                     let arr = self.pop();
@@ -61,15 +162,14 @@ impl VM {
                         _ => {}
                     };
 
-                    ip += 1;
+                    self.current_frame().ip += 1;
                 }
                 OP::ARR => {
                     let len = u16::from_be_bytes([
-                        self.instructions.0[ip + 1],
-                        self.instructions.0[ip + 2],
+                        self.current_frame().ins.get(ip + 1),
+                        self.current_frame().ins.get(ip + 2),
                     ]) as usize;
-
-                    ip += 3;
+                    self.current_frame().ip += 3;
 
                     let mut arr_proto = Vec::new();
                     arr_proto.resize(len, Box::new(Object::Null));
@@ -82,63 +182,59 @@ impl VM {
                 }
                 OP::GET_GLOB => {
                     let index = u16::from_be_bytes([
-                        self.instructions.0[ip + 1],
-                        self.instructions.0[ip + 2],
+                        self.current_frame().ins.get(ip + 1),
+                        self.current_frame().ins.get(ip + 2),
                     ]) as usize;
-
-                    ip += 3;
-
+                    self.current_frame().ip += 3;
                     self.push(self.globals[index].clone());
                 }
                 OP::SET_GLOB => {
                     let index = u16::from_be_bytes([
-                        self.instructions.0[ip + 1],
-                        self.instructions.0[ip + 2],
+                        self.current_frame().ins.get(ip + 1),
+                        self.current_frame().ins.get(ip + 2),
                     ]) as usize;
-
-                    ip += 3;
-
+                    self.current_frame().ip += 3;
                     self.globals[index] = self.pop();
                 }
                 OP::SET_NULL => {
                     self.stack.push(Object::Null);
-                    ip += 1;
+                    self.current_frame().ip += 1;
                 }
                 OP::JMP => {
                     // TODO: make function to get operands
-                    ip = u16::from_be_bytes([
-                        self.instructions.0[ip + 1],
-                        self.instructions.0[ip + 2],
+                    self.current_frame().ip = u16::from_be_bytes([
+                        self.current_frame().ins.get(ip + 1),
+                        self.current_frame().ins.get(ip + 2),
                     ]) as usize;
                 }
                 OP::JMP_IF_NOT => {
                     let pos = u16::from_be_bytes([
-                        self.instructions.0[ip + 1],
-                        self.instructions.0[ip + 2],
+                        self.current_frame().ins.get(ip + 1),
+                        self.current_frame().ins.get(ip + 2),
                     ]) as usize;
-                    ip += 3;
+                    self.current_frame().ip += 3;
 
                     let cond = self.pop();
                     match !cond {
-                        Object::Boolean(true) => ip = pos,
+                        Object::Boolean(true) => self.current_frame().ip = pos,
                         _ => {}
                     }
                 }
                 OP::POP => {
                     self.last_popped = self.pop();
-                    ip += 1;
+                    self.current_frame().ip += 1;
                 }
                 OP::CONSTANT => {
                     let const_index = u16::from_be_bytes([
-                        self.instructions.0[ip + 1],
-                        self.instructions.0[ip + 2],
+                        self.current_frame().ins.get(ip + 1),
+                        self.current_frame().ins.get(ip + 2),
                     ]);
 
                     // take the constant out of the constants pool and push it
                     // onto the VM stack
                     self.push(self.constants[const_index as usize].clone());
 
-                    ip += 3;
+                    self.current_frame().ip += 3;
                 }
                 OP::TRUE | OP::FALSE => {
                     if op == OP::TRUE {
@@ -147,11 +243,11 @@ impl VM {
                         self.push(Object::Boolean(false))
                     }
 
-                    ip += 1;
+                    self.current_frame().ip += 1;
                 }
                 OP::GT | OP::EQ | OP::NE => {
                     self.exec_comparison_op(op);
-                    ip += 1;
+                    self.current_frame().ip += 1;
                 }
                 OP::NOT | OP::NEG => {
                     let operand = self.pop();
@@ -161,13 +257,13 @@ impl VM {
                         self.push(!operand)
                     }
 
-                    ip += 1;
+                    self.current_frame().ip += 1;
                 }
                 OP::ADD | OP::DIV | OP::MUL | OP::SUB => {
                     self.exec_binary_op(op);
-                    ip += 1;
+                    self.current_frame().ip += 1;
                 }
-                _ => ip += 1,
+                _ => self.current_frame().ip += 1,
             }
         }
     }
