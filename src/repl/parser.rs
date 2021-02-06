@@ -1,4 +1,4 @@
-use crate::repl::lexer::{Lexer, Token, TokenType};
+use crate::repl::lexer::{Lexer, Token, TokenType, TokenValue};
 use std::{io::Error, io::ErrorKind};
 
 pub struct Parser<'a> {
@@ -97,7 +97,7 @@ impl<'a> Parser<'a> {
                 }
 
                 let body = self.parse_block_statement();
-                Box::new(Expression::Function(parameters, body))
+                Box::new(Expression::Function(None, parameters, body))
             }
             _ => Box::new(Expression::None),
         }
@@ -275,7 +275,19 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        Some(Statement::Let(token, value))
+        let value = match *value {
+            Expression::Function(_, identifiers, body) => Expression::Function(
+                match token.clone().t_value.unwrap() {
+                    TokenValue::Literal(name) => Some(name),
+                    _ => None,
+                },
+                identifiers,
+                body,
+            ),
+            _ => *value,
+        };
+
+        Some(Statement::Let(token, Box::new(value)))
     }
 
     fn parse_expression_statement(&mut self) -> Option<Statement> {
@@ -370,8 +382,8 @@ pub enum Expression {
     Integer(Token),
     // condition, block statement, else clause
     If(Box<Expression>, Box<Statement>, Box<Statement>),
-    // vector of identifier tokens and the body
-    Function(Vec<Token>, Box<Statement>),
+    // name, vector of identifier tokens and the body
+    Function(Option<String>, Vec<Token>, Box<Statement>),
     None,
 }
 
@@ -455,7 +467,7 @@ impl Expression {
 
                 s
             }
-            Expression::Function(params, body) => {
+            Expression::Function(_name, params, body) => {
                 let mut s: String = String::from("fn");
 
                 let mut v = Vec::new();

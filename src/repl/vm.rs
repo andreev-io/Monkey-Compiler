@@ -181,7 +181,7 @@ impl VM {
                     // pop the call frame
                     let popped_bp = self.pop_frame().unwrap().bp;
                     // pop local bindings
-                    while self.stack.len() >= popped_bp {
+                    while self.stack.len() > popped_bp {
                         self.pop();
                     }
 
@@ -199,6 +199,11 @@ impl VM {
 
                     // push the return value
                     self.push(ret_val);
+                }
+                OP::CUR_CLOS => {
+                    let current_closure = self.current_frame().clos.clone();
+                    self.push(current_closure);
+                    self.current_frame().ip += 1;
                 }
                 OP::CALL => {
                     let num_passed_args =
@@ -220,7 +225,6 @@ impl VM {
                     if num_passed_args != num_args {
                         panic!("got {} params expected {}", num_passed_args, num_args);
                     }
-
                     self.push_frame(Frame::new(f, self.stack.len() - num_args));
                     // Allocate space for local bindings on the stack.
                     for _ in 0..num_locals {
@@ -258,7 +262,6 @@ impl VM {
                     self.push(array);
                 }
                 OP::GET_GLOB => {
-                    //println!("getting a global");
                     let index = u16::from_be_bytes([
                         self.current_frame().ins().get(ip + 1),
                         self.current_frame().ins().get(ip + 2),
@@ -349,13 +352,12 @@ impl VM {
     fn exec_comparison_op(&mut self, op: OpCode) {
         let left = self.pop();
         let right = self.pop();
-
         match op {
             OP::GT => self.push(Object::Boolean(left > right)),
             OP::NE => self.push(Object::Boolean(left != right)),
             OP::EQ => self.push(Object::Boolean(left == right)),
             _ => {}
-        }
+        };
     }
 
     fn exec_binary_op(&mut self, op: OpCode) {

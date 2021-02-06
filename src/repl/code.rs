@@ -67,11 +67,12 @@ impl OP {
 
     pub const CLOS: OpCode = 25;
     pub const GET_FREE: OpCode = 26;
+    pub const CUR_CLOS: OpCode = 27;
 }
 
 struct Definition(Vec<usize>);
 
-// Definitions are op codes mapped to an respective array of their arguments'
+// Definitions are op codes mapped to the respective array of their arguments'
 // sizes, in bytes.
 lazy_static! {
     static ref DEFINITIONS: HashMap<OpCode, Definition> = {
@@ -106,6 +107,7 @@ lazy_static! {
         // variables to be popped off the stack
         m.insert(OP::CLOS, Definition(vec![2, 1]));
         m.insert(OP::GET_FREE, Definition(vec![1]));
+        m.insert(OP::CUR_CLOS, Definition(vec![]));
 
         m
     };

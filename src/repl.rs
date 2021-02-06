@@ -1,5 +1,5 @@
 use crate::repl::{
-    compiler::Compiler, eval::Evaluator, lexer::Lexer, object::Object, parser::Parser, vm::VM,
+    compiler::Compiler, lexer::Lexer, object::Object, parser::Parser, vm::VM,
 };
 use std::io::{Read, Write};
 
@@ -35,7 +35,7 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let comp = Compiler::new_with_state(symbols, constants);
         let (bytecode, new_symbols) = comp.compile(program);
         symbols = new_symbols;
-        println!("\n\nBytecode: {:?}\n\n", bytecode);
+        // println!("\n\nBytecode: {:?}\n\n", bytecode);
         constants = bytecode.constants.clone();
 
         let mut machine = VM::new_with_existing_globals(bytecode, globals);

@@ -141,6 +141,7 @@ impl Sub for Object {
 }
 
 impl Object {
+    #[allow(dead_code)]
     pub fn inspect(&self) -> String {
         match self {
             Object::Integer(i) => i.to_string(),

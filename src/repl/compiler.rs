@@ -3,10 +3,8 @@ use crate::repl::code::{Instructions, OpCode, OP};
 use crate::repl::lexer::{TokenType, TokenValue};
 use crate::repl::object::Object;
 use crate::repl::parser::{Expression, Program, Statement};
-use core::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::rc::Rc;
 
 #[derive(Clone)]
 struct EmittedInstruction {
@@ -40,9 +38,10 @@ enum SymbolScope {
     Free,
     Global,
     Local,
+    Function,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Symbol {
     name: String,
     scope: SymbolScope,
@@ -51,7 +50,7 @@ struct Symbol {
 
 #[derive(Clone)]
 pub struct SymbolTable {
-    store: HashMap<String, Symbol>,
+    store: (HashMap<String, Symbol>, bool),
     outer: Option<Box<SymbolTable>>,
     free_symbols: Vec<Symbol>,
 }
@@ -59,7 +58,7 @@ pub struct SymbolTable {
 impl SymbolTable {
     pub fn new() -> SymbolTable {
         SymbolTable {
-            store: HashMap::new(),
+            store: (HashMap::new(), false),
             outer: None,
             free_symbols: Vec::new(),
         }
@@ -67,10 +66,23 @@ impl SymbolTable {
 
     pub fn new_enclosed(s: SymbolTable) -> SymbolTable {
         SymbolTable {
-            store: HashMap::new(),
+            store: (HashMap::new(), false),
             outer: Some(Box::new(s)),
             free_symbols: Vec::new(),
         }
+    }
+
+    fn define_function_name(&mut self, name: String) -> Symbol {
+        let s = Symbol {
+            name: name.clone(),
+            scope: SymbolScope::Function,
+            index: self.free_symbols.len(),
+        };
+
+        self.store.0.insert(name, s.clone());
+        self.store.1 = true;
+
+        s
     }
 
     fn define_free(&mut self, s: Symbol) -> Symbol {
@@ -91,18 +103,24 @@ impl SymbolTable {
             SymbolScope::Global
         };
 
+        let index = if self.store.1 {
+            self.store.0.len() - 1
+        } else {
+            self.store.0.len()
+        };
+
         let symbol = Symbol {
             name: name.clone(),
             scope: scope.clone(),
-            index: self.store.len(),
+            index: index,
         };
 
-        self.store.insert(name, symbol.clone());
+        self.store.0.insert(name, symbol.clone());
         symbol.clone()
     }
 
     fn resolve(&mut self, name: String) -> Option<Symbol> {
-        if let Some(symbol) = self.store.get(&name) {
+        if let Some(symbol) = self.store.0.get(&name) {
             Some(symbol.clone())
         } else {
             if let Some(outer) = &mut self.outer {
@@ -224,13 +242,20 @@ impl Compiler {
     }
 
     fn load_symbol(&mut self, s: &Symbol) {
-        let op = match s.scope {
-            SymbolScope::Global => OP::GET_GLOB,
-            SymbolScope::Local => OP::GET_LOC,
-            SymbolScope::Free => OP::GET_FREE,
-        };
-
-        self.emit_instruction(op, &[s.index as i32]);
+        match s.scope {
+            SymbolScope::Global => {
+                self.emit_instruction(OP::GET_GLOB, &[s.index as i32]);
+            }
+            SymbolScope::Local => {
+                self.emit_instruction(OP::GET_LOC, &[s.index as i32]);
+            }
+            SymbolScope::Free => {
+                self.emit_instruction(OP::GET_FREE, &[s.index as i32]);
+            }
+            SymbolScope::Function => {
+                self.emit_instruction(OP::CUR_CLOS, &[]);
+            }
+        }
     }
 
     fn compile_expression(&mut self, e: Expression) {
@@ -244,8 +269,13 @@ impl Compiler {
 
                 self.emit_instruction(OP::CALL, &[args_len as i32]);
             }
-            Expression::Function(identifiers, body) => {
+            Expression::Function(f_name, identifiers, body) => {
                 self.enter_scope();
+
+                if let Some(f_name) = f_name {
+                    self.symbol_table.define_function_name(f_name);
+                }
+
                 let args_len = identifiers.len();
                 for ident in identifiers {
                     match ident.t_value.unwrap() {
@@ -266,7 +296,11 @@ impl Compiler {
                     self.emit_instruction(OP::RET_NONE, &[]);
                 }
 
-                let num_local_bindings = self.symbol_table.store.len();
+                let num_local_bindings = if self.symbol_table.store.1 {
+                    self.symbol_table.store.0.len() - 1
+                } else {
+                    self.symbol_table.store.0.len()
+                };
                 let num_free_bindings = self.symbol_table.free_symbols.len();
 
                 // The order of operations is important here. We just compiled

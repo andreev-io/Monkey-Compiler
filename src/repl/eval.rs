@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::repl::lexer::{Token, TokenType, TokenValue};
 use crate::repl::object::{Environment, Object};
 use crate::repl::parser::{Expression, Program, Statement};
@@ -170,7 +171,7 @@ impl Evaluator {
                     self.eval_statement(alternative)
                 }
             }
-            Expression::Function(parameters, body) => {
+            Expression::Function(_f_name, parameters, body) => {
                 Object::Function(parameters.to_vec(), body.clone(), self.env.clone())
             }
         }
