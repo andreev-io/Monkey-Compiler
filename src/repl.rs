@@ -35,7 +35,7 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let comp = Compiler::new_with_state(symbols, constants);
         let (bytecode, new_symbols) = comp.compile(program);
         symbols = new_symbols;
-        println!("{:?}", bytecode);
+        println!("\n\nBytecode: {:?}\n\n", bytecode);
         constants = bytecode.constants.clone();
 
         let mut machine = VM::new_with_existing_globals(bytecode, globals);
@@ -44,6 +44,6 @@ pub fn run_repl(stdin: &mut dyn Read, stdout: &mut dyn Write) -> Result<(), std:
         let popped = machine.get_last_popped();
         globals = machine.globals;
 
-        writeln!(stdout, "{:?}", popped)?;
+        writeln!(stdout, "Output: {:?}", popped)?;
     }
 }

@@ -64,6 +64,9 @@ impl OP {
 
     pub const GET_LOC: OpCode = 23;
     pub const SET_LOC: OpCode = 24;
+
+    pub const CLOS: OpCode = 25;
+    pub const GET_FREE: OpCode = 26;
 }
 
 struct Definition(Vec<usize>);
@@ -98,6 +101,11 @@ lazy_static! {
         m.insert(OP::RET_NONE, Definition(vec![]));
         m.insert(OP::GET_LOC, Definition(vec![1]));
         m.insert(OP::SET_LOC, Definition(vec![1]));
+        // instruct the VM to construct a closure. 2 bytes to point at the
+        // compiled function constant, 1 byte to indicate the number of free
+        // variables to be popped off the stack
+        m.insert(OP::CLOS, Definition(vec![2, 1]));
+        m.insert(OP::GET_FREE, Definition(vec![1]));
 
         m
     };
@@ -152,6 +160,16 @@ mod test {
                 op: code::OP::ADD,
                 operands: &[],
                 expected: code::Instructions(vec![code::OP::ADD]),
+            },
+            T {
+                op: code::OP::CLOS,
+                operands: &[65533, 255],
+                expected: code::Instructions(vec![code::OP::CLOS, 0xFF, 0xFD, 0xFF]),
+            },
+            T {
+                op: code::OP::CLOS,
+                operands: &[0, 255],
+                expected: code::Instructions(vec![code::OP::CLOS, 0x00, 0x00, 0xFF]),
             },
         ];
 

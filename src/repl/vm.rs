@@ -9,7 +9,8 @@ pub const MAX_GLOBALS: usize = 65536;
 const MAX_FRAMES: usize = 1024;
 
 struct Frame {
-    ins: Instructions,
+    // closure
+    clos: Object,
     // instruction pointer
     ip: usize,
     // base pointer
@@ -17,12 +18,41 @@ struct Frame {
 }
 
 impl Frame {
-    fn new(ins: Instructions, bp: usize) -> Frame {
+    fn new(closure: Object, bp: usize) -> Frame {
+        match closure {
+            Object::CompiledClosure { .. } => {}
+            _ => panic!("frame can only be constructed from a closure"),
+        };
+
         Frame {
-            ins: ins,
+            clos: closure,
             ip: 0,
             bp,
         }
+    }
+
+    fn ins(&self) -> &Instructions {
+        match &self.clos {
+            Object::CompiledClosure {
+                ins,
+                num_locals: _,
+                num_args: _,
+                frees: _,
+            } => ins,
+            _ => panic!(),
+        }
+    }
+
+    fn get_free(&self, i: usize) -> &Object {
+        match &self.clos {
+            Object::CompiledClosure {
+                ins: _,
+                num_locals: _,
+                num_args: _,
+                frees,
+            } => return &frees[i],
+            _ => panic!(),
+        };
     }
 }
 
@@ -41,7 +71,15 @@ pub struct VM {
 
 impl VM {
     pub fn new(code: compiler::Bytecode) -> VM {
-        let main_frame = Frame::new(code.instructions, 0);
+        let main_frame = Frame::new(
+            Object::CompiledClosure {
+                ins: code.instructions,
+                num_locals: 0,
+                num_args: 0,
+                frees: Vec::new(),
+            },
+            0,
+        );
         let mut frames = Vec::with_capacity(MAX_FRAMES);
         frames.push(main_frame);
 
@@ -82,19 +120,58 @@ impl VM {
     }
 
     pub fn run(&mut self) {
-        while self.current_frame().ip < self.current_frame().ins.len() {
+        while self.current_frame().ip < self.current_frame().ins().len() {
             let ip = self.current_frame().ip;
-            let op = self.current_frame().ins.get(ip);
-            match self.current_frame().ins.get(ip) {
+            let op = self.current_frame().ins().get(ip);
+            match self.current_frame().ins().get(ip) {
+                OP::CLOS => {
+                    let f_idx = u16::from_be_bytes([
+                        self.current_frame().ins().get(ip + 1),
+                        self.current_frame().ins().get(ip + 2),
+                    ]) as usize;
+
+                    let num_free =
+                        u8::from_be_bytes([self.current_frame().ins().get(ip + 3)]) as usize;
+
+                    self.current_frame().ip += 4;
+
+                    let mut frees = Vec::new();
+                    for i in 0..num_free {
+                        frees.push(self.stack[self.stack.len() - 1 - i].clone());
+                    }
+                    let closure_proto = self.constants[f_idx].clone();
+                    match closure_proto {
+                        Object::CompiledClosure {
+                            ins,
+                            num_locals,
+                            num_args,
+                            ..
+                        } => {
+                            self.push(Object::CompiledClosure {
+                                ins: ins,
+                                num_locals: num_locals,
+                                num_args: num_args,
+                                frees: frees,
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+                OP::GET_FREE => {
+                    let idx = u8::from_be_bytes([self.current_frame().ins().get(ip + 1)]) as usize;
+                    self.current_frame().ip += 2;
+                    let free = self.current_frame().get_free(idx).clone();
+                    self.push(free);
+                }
                 OP::GET_LOC => {
-                    let idx = u8::from_be_bytes([self.current_frame().ins.get(ip + 1)]) as usize;
+                    let idx = u8::from_be_bytes([self.current_frame().ins().get(ip + 1)]) as usize;
                     self.current_frame().ip += 2;
 
                     let bp = self.current_frame().bp;
                     self.push(self.stack[bp + idx].clone());
                 }
                 OP::SET_LOC => {
-                    let idx = u8::from_be_bytes([self.current_frame().ins.get(ip + 1)]) as usize;
+                    let idx = u8::from_be_bytes([self.current_frame().ins().get(ip + 1)]) as usize;
                     self.current_frame().ip += 2;
                     let local = self.pop();
                     let bp = self.current_frame().bp;
@@ -125,30 +202,30 @@ impl VM {
                 }
                 OP::CALL => {
                     let num_passed_args =
-                        u8::from_be_bytes([self.current_frame().ins.get(ip + 1)]) as usize;
+                        u8::from_be_bytes([self.current_frame().ins().get(ip + 1)]) as usize;
                     let f = self.stack.remove(self.stack.len() - 1 - num_passed_args);
-
                     // important to advance current frame before pushing a new
                     // frame
                     self.current_frame().ip += 2;
-                    match f {
-                        Object::CompiledFunction {
-                            ins,
+                    let (num_args, num_locals) = match f {
+                        Object::CompiledClosure {
+                            ins: _,
                             num_locals,
                             num_args,
-                        } => {
-                            if num_passed_args != num_args {
-                                panic!("got {} params expected {}", num_passed_args, num_args);
-                            }
-
-                            self.push_frame(Frame::new(ins.clone(), self.stack.len() - num_args));
-                            // Allocate space for local bindings on the stack.
-                            for _ in 0..num_locals {
-                                self.push(Object::Null);
-                            }
-                        }
-                        _ => {}
+                            ..
+                        } => (num_args.clone(), num_locals.clone()),
+                        _ => panic!(),
                     };
+
+                    if num_passed_args != num_args {
+                        panic!("got {} params expected {}", num_passed_args, num_args);
+                    }
+
+                    self.push_frame(Frame::new(f, self.stack.len() - num_args));
+                    // Allocate space for local bindings on the stack.
+                    for _ in 0..num_locals {
+                        self.push(Object::Null);
+                    }
                 }
                 OP::IDX => {
                     let index = self.pop();
@@ -166,8 +243,8 @@ impl VM {
                 }
                 OP::ARR => {
                     let len = u16::from_be_bytes([
-                        self.current_frame().ins.get(ip + 1),
-                        self.current_frame().ins.get(ip + 2),
+                        self.current_frame().ins().get(ip + 1),
+                        self.current_frame().ins().get(ip + 2),
                     ]) as usize;
                     self.current_frame().ip += 3;
 
@@ -181,17 +258,18 @@ impl VM {
                     self.push(array);
                 }
                 OP::GET_GLOB => {
+                    //println!("getting a global");
                     let index = u16::from_be_bytes([
-                        self.current_frame().ins.get(ip + 1),
-                        self.current_frame().ins.get(ip + 2),
+                        self.current_frame().ins().get(ip + 1),
+                        self.current_frame().ins().get(ip + 2),
                     ]) as usize;
                     self.current_frame().ip += 3;
                     self.push(self.globals[index].clone());
                 }
                 OP::SET_GLOB => {
                     let index = u16::from_be_bytes([
-                        self.current_frame().ins.get(ip + 1),
-                        self.current_frame().ins.get(ip + 2),
+                        self.current_frame().ins().get(ip + 1),
+                        self.current_frame().ins().get(ip + 2),
                     ]) as usize;
                     self.current_frame().ip += 3;
                     self.globals[index] = self.pop();
@@ -203,14 +281,14 @@ impl VM {
                 OP::JMP => {
                     // TODO: make function to get operands
                     self.current_frame().ip = u16::from_be_bytes([
-                        self.current_frame().ins.get(ip + 1),
-                        self.current_frame().ins.get(ip + 2),
+                        self.current_frame().ins().get(ip + 1),
+                        self.current_frame().ins().get(ip + 2),
                     ]) as usize;
                 }
                 OP::JMP_IF_NOT => {
                     let pos = u16::from_be_bytes([
-                        self.current_frame().ins.get(ip + 1),
-                        self.current_frame().ins.get(ip + 2),
+                        self.current_frame().ins().get(ip + 1),
+                        self.current_frame().ins().get(ip + 2),
                     ]) as usize;
                     self.current_frame().ip += 3;
 
@@ -226,8 +304,8 @@ impl VM {
                 }
                 OP::CONSTANT => {
                     let const_index = u16::from_be_bytes([
-                        self.current_frame().ins.get(ip + 1),
-                        self.current_frame().ins.get(ip + 2),
+                        self.current_frame().ins().get(ip + 1),
+                        self.current_frame().ins().get(ip + 2),
                     ]);
 
                     // take the constant out of the constants pool and push it

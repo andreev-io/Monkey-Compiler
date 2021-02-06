@@ -37,6 +37,7 @@ pub struct Bytecode {
 
 #[derive(Clone, Debug)]
 enum SymbolScope {
+    Free,
     Global,
     Local,
 }
@@ -52,6 +53,7 @@ struct Symbol {
 pub struct SymbolTable {
     store: HashMap<String, Symbol>,
     outer: Option<Box<SymbolTable>>,
+    free_symbols: Vec<Symbol>,
 }
 
 impl SymbolTable {
@@ -59,6 +61,7 @@ impl SymbolTable {
         SymbolTable {
             store: HashMap::new(),
             outer: None,
+            free_symbols: Vec::new(),
         }
     }
 
@@ -66,10 +69,22 @@ impl SymbolTable {
         SymbolTable {
             store: HashMap::new(),
             outer: Some(Box::new(s)),
+            free_symbols: Vec::new(),
         }
     }
 
-    fn define(&mut self, name: String) -> (usize, SymbolScope) {
+    fn define_free(&mut self, s: Symbol) -> Symbol {
+        let n = s.name.clone();
+        self.free_symbols.push(s);
+
+        Symbol {
+            name: n,
+            scope: SymbolScope::Free,
+            index: self.free_symbols.len() - 1,
+        }
+    }
+
+    fn define(&mut self, name: String) -> Symbol {
         let scope = if let Some(_) = &self.outer {
             SymbolScope::Local
         } else {
@@ -82,18 +97,21 @@ impl SymbolTable {
             index: self.store.len(),
         };
 
-        let symbol_index = symbol.index;
-
-        self.store.insert(name, symbol);
-        (symbol_index, scope)
+        self.store.insert(name, symbol.clone());
+        symbol.clone()
     }
 
-    fn resolve(&self, name: String) -> Option<(usize, SymbolScope)> {
+    fn resolve(&mut self, name: String) -> Option<Symbol> {
         if let Some(symbol) = self.store.get(&name) {
-            Some((symbol.index, symbol.scope.clone()))
+            Some(symbol.clone())
         } else {
-            if let Some(outer) = &self.outer {
-                return outer.resolve(name);
+            if let Some(outer) = &mut self.outer {
+                if let Some(outer_symbol) = outer.resolve(name.clone()) {
+                    match outer_symbol.scope {
+                        SymbolScope::Global => return Some(outer_symbol),
+                        _ => return Some(self.define_free(outer_symbol)),
+                    }
+                }
             }
 
             None
@@ -174,18 +192,19 @@ impl Compiler {
                 self.emit_instruction(OP::RET_VAL, &[]);
             }
             Statement::Let(token, exp) => {
-                self.compile_expression(*exp);
-
+                // Define first, compile after. This way recursion works.
                 match token.t_value.unwrap() {
                     TokenValue::Literal(name) => {
-                        let (symbol_index, symbol_scope) = self.symbol_table.define(name);
-                        match symbol_scope {
+                        let symbol = self.symbol_table.define(name);
+                        self.compile_expression(*exp);
+                        match symbol.scope {
                             SymbolScope::Global => {
-                                self.emit_instruction(OP::SET_GLOB, &[symbol_index as i32]);
+                                self.emit_instruction(OP::SET_GLOB, &[symbol.index as i32]);
                             }
                             SymbolScope::Local => {
-                                self.emit_instruction(OP::SET_LOC, &[symbol_index as i32]);
+                                self.emit_instruction(OP::SET_LOC, &[symbol.index as i32]);
                             }
+                            _ => {}
                         }
                     }
                     _ => {}
@@ -202,6 +221,16 @@ impl Compiler {
             }
             _ => {}
         }
+    }
+
+    fn load_symbol(&mut self, s: &Symbol) {
+        let op = match s.scope {
+            SymbolScope::Global => OP::GET_GLOB,
+            SymbolScope::Local => OP::GET_LOC,
+            SymbolScope::Free => OP::GET_FREE,
+        };
+
+        self.emit_instruction(op, &[s.index as i32]);
     }
 
     fn compile_expression(&mut self, e: Expression) {
@@ -238,14 +267,29 @@ impl Compiler {
                 }
 
                 let num_local_bindings = self.symbol_table.store.len();
+                let num_free_bindings = self.symbol_table.free_symbols.len();
+
+                // The order of operations is important here. We just compiled
+                // the function body in the inner scope. We now take a record of
+                // the free symbols that the compiled function needs access to
+                // and leave the scope. After leaving the scope, we load all the
+                // necessary symbols onto the stack within current scope, so
+                // they are available for the function in the inner scope.
+                let mut free_symbols = self.symbol_table.free_symbols.clone();
                 let instructions = self.leave_scope();
-                let compiled_f = Object::CompiledFunction {
+                while let Some(free_symbol) = free_symbols.pop() {
+                    self.load_symbol(&free_symbol);
+                }
+
+                let compiled_f = Object::CompiledClosure {
                     ins: instructions,
                     num_locals: num_local_bindings,
                     num_args: args_len,
+                    frees: Vec::new(),
                 };
+
                 let address = self.add_constant(compiled_f) as i32;
-                self.emit_instruction(OP::CONSTANT, &[address]);
+                self.emit_instruction(OP::CLOS, &[address, num_free_bindings as i32]);
             }
             Expression::Index(arr, idx) => {
                 self.compile_expression(*arr);
@@ -271,17 +315,8 @@ impl Compiler {
             }
             Expression::Identifier(token) => match token.t_value.unwrap() {
                 TokenValue::Literal(name) => {
-                    if let Some((symbol_index, symbol_scope)) =
-                        self.symbol_table.resolve(name.clone())
-                    {
-                        match symbol_scope {
-                            SymbolScope::Global => {
-                                self.emit_instruction(OP::GET_GLOB, &[symbol_index as i32]);
-                            }
-                            SymbolScope::Local => {
-                                self.emit_instruction(OP::GET_LOC, &[symbol_index as i32]);
-                            }
-                        }
+                    if let Some(symbol) = self.symbol_table.resolve(name.clone()) {
+                        self.load_symbol(&symbol);
                     } else {
                         panic!("undefined variable {}", name);
                     }

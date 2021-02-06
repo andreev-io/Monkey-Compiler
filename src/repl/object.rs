@@ -12,11 +12,13 @@ pub enum Object {
     Integer(i32),
     Boolean(bool),
     String(String),
+    // identifiers, body, environment
     Function(Vec<Token>, Box<Statement>, Rc<RefCell<Environment>>),
-    CompiledFunction {
+    CompiledClosure {
         ins: Instructions,
         num_locals: usize,
         num_args: usize,
+        frees: Vec<Object>,
     },
     ReturnValue(Box<Object>),
     Array(Vec<Box<Object>>),
@@ -175,7 +177,7 @@ impl Object {
                 s
             }
             Object::Null => String::from("null"),
-            _ => String::from("compiled function"),
+            _ => String::from("composite type"),
         }
     }
 }
