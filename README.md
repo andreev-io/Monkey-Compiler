@@ -1,19 +1,40 @@
-# Monkey Interpreter in Rust
+# Monkey Compiler in Rust
 
-This project is an implementation of a simple interpreter (tree-walking interpreter with a Pratt parser) in Rust. It can run naive programs written in the Monkey programming language. Run `cargo run --release` to bring up a REPL.
+This project is a single-pass custom bytecode compiler and a stack-based virtual machine that runs code written in Monkey. Under the hood, the parser uses Pratt parsing. 
 
-The following are examples of valid Monkey programs:
+The language supports first-class functions (with arguments), anonymous functions, closures, return statements, if clauses, strings, integers, booleans, and arrays. 
+
+Run `cargo run --release` to bring up a REPL.
+
+The following are examples of some amazing Monkey programs:
 ```
->>> (5 + 10 * 2 + 15 / 3) * 2 + -10
+>>> let fibonacci = fn(x) {
+        if (x == 0) { 
+            0
+        } else {
+            if (x == 1) {
+                return 1;
+            } else {
+                fibonacci(x - 1) + fibonacci(x - 2);
+            }
+        } 
+};
 
-50
+fibonacci(35);
 ```
 
-Conditionals:
 ```
->>> if (1 > 2) { 10 } else { 20 }
-
-20
+>>> let wrapper = fn() {
+        let countDown = fn(x) {
+            if (x == 0) {
+                return 0;
+            } else {
+                countDown(x - 1);
+            } 
+        };
+        countDown(1);
+};
+wrapper();
 ```
 
 Arrays and indexing:
@@ -23,6 +44,16 @@ Arrays and indexing:
 
 5
 ```
+
+Nulls and truthy values:
+```
+>>> !!fn() {}();
+false
+
+>>> !!"hi"
+true
+```
+
 
 Strings:
 ```
@@ -34,43 +65,12 @@ Strings:
 1
 ```
 
-```
->>> if (10 > 1) {
->>> if (10 > 1) {
->>> return 10;
->>> }
->>> return 1; 
->>> }
-
-10
-```
-
-```
->>> let a = 5; let b = 15; let c = a + b; c;
-
-20
-```
-
-Functions:
-```
->>> let add = fn(x, y) { x + y; }; add(5, add(5, 5));
-
-15
-```
-
-```
->>> fn(x) { x; }(5)
-
-5
-```
-
 As shown above, the language supports anonymous functions and function literals.
 The language doesn't have garbage collection and relies on Rust's ownership
-semantics for memory management. When writing code in Monkey, the semantics are
-as if everything was allocated on the stack (this is almost necessarily not
-true, but is a useful abstraction).
+semantics for memory management.
 
-This implementation relies heavily on cloning Rust values. Consider the following example:
+As far as the virtual machine goes, it correctly cleans up the call frame whenever a closure is exited.
+
 ```
 >>> let v = [1, 2, 3]; 
 
@@ -84,7 +84,7 @@ let superfunc = fn(a) {
 
 When `superfunc` is called, `b` is created by cloning the array `a`, but is deallocated when superfunc returns.
 
-Monkey has closures. Thanks to closures, recursion is possible:
+
 ```
 let factorial = fn(x) {
     if (x == 0) {
@@ -95,22 +95,6 @@ let factorial = fn(x) {
 }
 
 factorial(5)
-```
-
-```
-let fibonacci = fn(x) { 
-    if (x == 0) {
-        0
-    } else {
-        if (x == 1) {
-            return 1; 
-        } else {
-            fibonacci(x - 1) + fibonacci(x - 2);
-        }
-    } 
-};
-            
-fibonacci(7)
 ```
 
 Note that we could've allocated anything within the recursively called
